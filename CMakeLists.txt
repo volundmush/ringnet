@@ -30,17 +30,15 @@ CPMAddPackage(
         VERSION 3.10.4
 )
 
-file(GLOB RINGNET_INCLUDE include/*.h)
+file(GLOB RINGNET_INCLUDE include/ringnet/*.h)
 file(GLOB RINGNET_SRC src/*.cpp)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "-fpermissive")
 
-include_directories(include)
-
 add_library(ringnet ${RINGNET_INCLUDE} ${RINGNET_SRC})
 link_libraries(ringnet)
 
-include_directories(PUBLIC ${asio_SOURCE_DIR}/asio/include ${entt_SOURCE_DIR}/single_include ${json_SOURCE_DIR}/single_include)
+include_directories(PUBLIC include ${asio_SOURCE_DIR}/asio/include ${entt_SOURCE_DIR}/single_include ${json_SOURCE_DIR}/single_include)
 
 add_executable(ringnet_test apps/ringnet_test.cpp)

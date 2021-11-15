@@ -4,8 +4,8 @@
 
 #include <iostream>
 #include <chrono>
-#include "telnet.h"
-#include "net.h"
+#include "ringnet/telnet.h"
+#include "ringnet/net.h"
 
 namespace ring::telnet {
     namespace codes {
@@ -310,10 +310,7 @@ namespace ring::telnet {
         for(const auto& c : msg.data) {
             switch(c) {
                 case '\n':
-                    conn.in_mutex.lock();
-                    std::cout << "Received a command: " << app_data << std::endl;
-                    conn.text_in.emplace(app_data);
-                    conn.in_mutex.unlock();
+                    conn.receiveText(app_data, net::Line);
                     app_data.clear();
                     break;
                 case '\r':
@@ -364,10 +361,7 @@ namespace ring::telnet {
     void TelnetProtocol::sendBytes(const std::vector<uint8_t> &data) {
 
         if(conn.details.clientType == ring::net::TcpTelnet || conn.details.clientType == ring::net::TlsTelnet) {
-            auto &out_buffer = conn.buffers->out_buffer;
-            auto prep = out_buffer.prepare(data.size());
-            memcpy(prep.data(), data.data(), data.size());
-            out_buffer.commit(data.size());
+            conn.buffers->write(data);
 
             if(conn.details.clientType == ring::net::TcpTelnet) {
                 conn.plainSocket->send();

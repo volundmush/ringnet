@@ -23,7 +23,7 @@ namespace ring::net {
 
     void run();
 
-    extern std::function<void(int conn_id)> on_ready_cb, on_close_cb;
+    extern std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
 
 
     enum ClientType : uint8_t {
@@ -72,6 +72,8 @@ namespace ring::net {
 
     struct socket_buffers {
         asio::streambuf in_buffer, out_buffer;
+        std::mutex out_mutex;
+        void write(const std::vector<uint8_t> &data);
     };
 
     struct plain_socket {
@@ -94,13 +96,18 @@ namespace ring::net {
         plain_socket *plainSocket;
         socket_buffers *buffers = nullptr;
         telnet::TelnetProtocol *telnetProtocol = nullptr;
-        std::mutex in_mutex, out_mutex;
-        std::queue<TextMessage> text_out;
-        std::queue<std::string> text_in;
-        std::queue<nlohmann::json> json_in, json_out;
+        std::mutex in_queue_mutex, out_queue_mutex;
+        std::queue<nlohmann::json> queue_in, queue_out;
         bool active = true;
         void onClose();
         void onReady();
+        void sendText(const std::string &txt, TextType mode = Text);
+        void sendJson(const nlohmann::json& json);
+        void sendMSSP(const std::vector<std::pair<std::string, std::string>>& pairs);
+        void receiveText(const std::string &txt, TextType mode = Text);
+        void receiveJson(const nlohmann::json& json);
+        void queueJson(const nlohmann::json& json);
+
     };
 
     struct plain_telnet_listen {

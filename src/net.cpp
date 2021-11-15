@@ -4,15 +4,14 @@
 
 #include <iostream>
 #include <thread>
-#include "net.h"
-#include "telnet.h"
+#include "ringnet/net.h"
+#include "ringnet/telnet.h"
 
 namespace ring::net {
 
     asio::io_context executor;
-    entt::registry netreg;
 
-    std::function<void(int conn_id)> on_ready_cb, on_close_cb;
+    std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
 
     client_details::client_details(ClientType ctype) {
         clientType = ctype;
@@ -32,6 +31,14 @@ namespace ring::net {
         if(clientType == WebSocket) return true;
         return gmcp || msdp;
 
+    }
+
+    void socket_buffers::write(const std::vector<uint8_t> &data) {
+        out_mutex.lock();
+        auto prep = out_buffer.prepare(data.size());
+        memcpy(prep.data(), data.data(), data.size());
+        out_buffer.commit(data.size());
+        out_mutex.unlock();
     }
 
     connection_details::connection_details(int con, ClientType ctype) : details(ctype) {
@@ -64,6 +71,33 @@ namespace ring::net {
         delete plainSocket;
     }
 
+    void connection_details::receiveJson(const nlohmann::json &json) {
+        nlohmann::json j = {
+                {"msg_type", 1},
+                {"data", json}
+        };
+        queueJson(j);
+    }
+
+    void connection_details::receiveText(const std::string &txt, TextType mode) {
+        nlohmann::json j = {
+                {"msg_type", 0},
+                {"data", {
+                        {"text", txt},
+                        {"mode", mode},
+                    }
+                }
+        };
+        queueJson(j);
+    }
+
+    void connection_details::queueJson(const nlohmann::json &json) {
+        in_queue_mutex.lock();
+        queue_in.push(json);
+        in_queue_mutex.unlock();
+        on_receive_cb(conn_id);
+    }
+
     plain_socket::plain_socket() : socket(executor) {
 
     }
@@ -75,8 +109,10 @@ namespace ring::net {
             auto &out_buffer = conn->buffers->out_buffer;
             if(out_buffer.size()) {
                 isWriting = true;
+                conn->buffers->out_mutex.lock();
                 auto handler = [&](std::error_code ec, std::size_t trans) {
                     out_buffer.consume(trans);
+                    conn->buffers->out_mutex.unlock();
                     isWriting = false;
                     if(out_buffer.size())
                         send();
@@ -198,6 +234,9 @@ namespace ring::net {
         if(!on_close_cb) {
             std::cerr << "Error! on_close_cb not set." << std::endl;
             exit(1);
+        }
+        if(!on_receive_cb) {
+            std::cerr << "Error! on_receive_cb not set." << std::endl;
         }
         // quick and dirty
         for(int i = 0; i < std::thread::hardware_concurrency() - 1; i++) {

@@ -12,7 +12,6 @@
 #include <map>
 #include <optional>
 #include "asio.hpp"
-#include "entt/entt.hpp"
 
 namespace ring::net {
     struct connection_details;
@@ -116,10 +115,5 @@ namespace ring::telnet {
 
 
 }
-
-template<>
-struct entt::component_traits<ring::telnet::TelnetProtocol>: basic_component_traits {
-    using in_place_delete = std::true_type;
-};
 
 #endif //RINGMUD_TELNET_H
