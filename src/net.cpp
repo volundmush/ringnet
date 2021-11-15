@@ -13,6 +13,7 @@ namespace ring::net {
     asio::io_context *executor = new asio::io_context;
 
     std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
+    std::function<void(nlohmann::json& j)> copyover_prepare_cb, copyover_recover_cb;
 
     client_details::client_details(ClientType ctype) {
         clientType = ctype;
@@ -253,6 +254,9 @@ namespace ring::net {
     plain_telnet_listen::plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man)
     : manager(man), acceptor(*executor, endp) {}
 
+    plain_telnet_listen::plain_telnet_listen(int socket, ListenManager &man)
+    : acceptor(*executor, socket), manager(man) {}
+
     void plain_telnet_listen::listen() {
         if(!isListening) {
             isListening = true;
@@ -319,7 +323,7 @@ namespace ring::net {
 
     ListenManager manager;
 
-    void run() {
+    void ListenManager::run() {
         if(!on_ready_cb) {
             std::cerr << "Error! on_ready_cb not set." << std::endl;
             exit(1);
@@ -343,6 +347,19 @@ namespace ring::net {
         }
         manager.threads.clear();
 
+        auto j = serialize();
+
+        if(do_copyover) {
+            copyover_prepare_cb(j);
+        }
+
+        delete executor;
+
+    }
+
+    void ListenManager::copyover() {
+        do_copyover = true;
+        executor->stop();
     }
 
     void ListenManager::closeConn(int conn_id) {
@@ -382,6 +399,24 @@ namespace ring::net {
             j.push_back(t.second->serialize());
         }
         return j;
+    }
+
+    void ListenManager::copyoverRecover(nlohmann::json &json) {
+        if(json.contains("plainTelnetListeners")) {
+            loadPlainTelnetListeners(json.at("plainTelnetListeners"));
+        }
+
+        copyover_recover_cb(json);
+    }
+
+    void ListenManager::loadPlainTelnetListeners(nlohmann::json &j) {
+        for(const auto &j2 : j) {
+            int socket = j2["socket"];
+            auto p = new plain_telnet_listen(socket, *this);
+            int port = j2["port"];
+            ports.insert(port);
+            plain_telnet_listeners.emplace(port, p);
+        }
     }
 
 }

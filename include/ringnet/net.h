@@ -21,11 +21,8 @@ namespace ring::net {
 
     extern asio::io_context *executor;
 
-    void run();
-    void copyover();
-
     extern std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
-    extern std::function<void(nlohmann::json j)> copyover_prepare_cb, copyover_recover_cb;
+    extern std::function<void(nlohmann::json& j)> copyover_prepare_cb, copyover_recover_cb;
 
 
     enum ClientType : uint8_t {
@@ -121,6 +118,7 @@ namespace ring::net {
 
     struct plain_telnet_listen {
         plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man);
+        plain_telnet_listen(int socket, ListenManager &man);
         asio::ip::tcp::acceptor acceptor;
         plain_socket *queued_socket;
         ListenManager &manager;
@@ -141,16 +139,21 @@ namespace ring::net {
         std::unordered_map<int, std::shared_ptr<connection_details>> connections;
         std::mutex conn_mutex;
         void closeConn(int conn_id);
+        void run();
+        void copyover();
         std::vector<std::thread> threads;
         void copyoverRecover(nlohmann::json &json);
         nlohmann::json serialize();
-    protected:
+        bool do_copyover = false;
         std::unordered_map<uint16_t, std::unique_ptr<plain_telnet_listen>> plain_telnet_listeners;
+    protected:
+
         std::unordered_set<uint16_t> ports;
         asio::ip::address parse_addr(const std::string& ip);
         asio::ip::tcp::endpoint create_endpoint(const std::string& ip, uint16_t port);
         nlohmann::json serializePlainTelnetListeners();
         nlohmann::json serializeConnections();
+        void loadPlainTelnetListeners(nlohmann::json &j);
 
     };
 
