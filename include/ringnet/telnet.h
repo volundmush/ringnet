@@ -12,6 +12,7 @@
 #include <map>
 #include <optional>
 #include "asio.hpp"
+#include "nlohmann/json.hpp"
 
 namespace ring::net {
     struct connection_details;
@@ -84,9 +85,10 @@ namespace ring::telnet {
         void rejectLocalHandshake(), acceptLocalHandshake(), rejectRemoteHandshake(), acceptRemoteHandshake();
         TelnetOptionPerspective local, remote;
         uint8_t code;
+        void load(nlohmann::json& j);
+        nlohmann::json serialize() const;
     protected:
         TelnetProtocol &protocol;
-        bool ready = false;
     };
 
     class TelnetProtocol {
@@ -106,8 +108,10 @@ namespace ring::telnet {
         void sendMSSP(std::map<std::string, std::string>& data);
         void start(), onConnect();
         net::connection_details &conn;
+        void load(nlohmann::json &json);
+        nlohmann::json serialize();
+        nlohmann::json serializeHandlers();
     private:
-        uint32_t overflow_counter = 0;
         std::string app_data;
         std::unordered_map<uint8_t, TelnetOption> handlers;
         asio::steady_timer start_timer;

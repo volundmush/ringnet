@@ -7,7 +7,7 @@
 
 #include <mutex>
 #include <memory>
-#include <queue>
+#include <list>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,11 +19,13 @@
 
 namespace ring::net {
 
-    extern asio::io_context executor;
+    extern asio::io_context *executor;
 
     void run();
+    void copyover();
 
     extern std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
+    extern std::function<void(nlohmann::json j)> copyover_prepare_cb, copyover_recover_cb;
 
 
     enum ClientType : uint8_t {
@@ -68,12 +70,16 @@ namespace ring::net {
         explicit client_details(ClientType ctype);
         bool isSecure() const;
         bool supportsOOB() const;
+        nlohmann::json serialize();
+        void load(nlohmann::json &j);
     };
 
     struct socket_buffers {
         asio::streambuf in_buffer, out_buffer;
         std::mutex out_mutex;
         void write(const std::vector<uint8_t> &data);
+        void load();
+        nlohmann::json serialize() const;
     };
 
     struct plain_socket {
@@ -96,8 +102,8 @@ namespace ring::net {
         plain_socket *plainSocket;
         socket_buffers *buffers = nullptr;
         telnet::TelnetProtocol *telnetProtocol = nullptr;
-        std::mutex in_queue_mutex, out_queue_mutex;
-        std::queue<nlohmann::json> queue_in, queue_out;
+        std::mutex in_queue_mutex;
+        std::list<nlohmann::json> queue_in;
         bool active = true;
         void onClose();
         void onReady();
@@ -107,6 +113,9 @@ namespace ring::net {
         void receiveText(const std::string &txt, TextType mode = Text);
         void receiveJson(const nlohmann::json& json);
         void queueJson(const nlohmann::json& json);
+        void receiveMSSP();
+        nlohmann::json serialize();
+        void load(nlohmann::json &j);
 
     };
 
@@ -133,11 +142,15 @@ namespace ring::net {
         std::mutex conn_mutex;
         void closeConn(int conn_id);
         std::vector<std::thread> threads;
+        void copyoverRecover(nlohmann::json &json);
+        nlohmann::json serialize();
     protected:
         std::unordered_map<uint16_t, std::unique_ptr<plain_telnet_listen>> plain_telnet_listeners;
         std::unordered_set<uint16_t> ports;
         asio::ip::address parse_addr(const std::string& ip);
         asio::ip::tcp::endpoint create_endpoint(const std::string& ip, uint16_t port);
+        nlohmann::json serializePlainTelnetListeners();
+        nlohmann::json serializeConnections();
 
     };
 

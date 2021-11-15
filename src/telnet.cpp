@@ -261,7 +261,33 @@ namespace ring::telnet {
 
     }
 
-    TelnetProtocol::TelnetProtocol(net::connection_details &det) : conn(det), start_timer(net::executor, asio::chrono::milliseconds(300)) {
+    void TelnetOption::load(nlohmann::json& j) {
+        local.enabled = j["local"]["enabled"];
+        local.negotiating = j["local"]["negotiating"];
+        local.answered = j["local"]["answered"];
+
+        remote.enabled = j["remote"]["enabled"];
+        remote.negotiating = j["remote"]["negotiating"];
+        remote.answered = j["remote"]["answered"];
+    }
+
+    nlohmann::json TelnetOption::serialize() const {
+        nlohmann::json j;
+        j["local"] = {
+                {"enabled", local.enabled},
+                {"negotiating", local.negotiating},
+                {"answered", local.answered}
+        };
+        j["remote"] = {
+                {"enabled", remote.enabled},
+                {"negotiating", remote.negotiating},
+                {"answered", remote.answered}
+        };
+        return j;
+    }
+
+
+    TelnetProtocol::TelnetProtocol(net::connection_details &det) : conn(det), start_timer(*net::executor, asio::chrono::milliseconds(300)) {
         using namespace codes;
 
         for(const auto &code : {MSSP, SGA, MSDP, GMCP, NAWS, MTTS}) {
@@ -358,6 +384,30 @@ namespace ring::telnet {
         sendBytes(data);
     }
 
+    void TelnetProtocol::sendText(const std::string &txt) {
+        std::vector<uint8_t> data(txt.begin(), txt.end());
+        sendBytes(data);
+    }
+
+    void TelnetProtocol::sendLine(const std::string &txt) {
+        if(txt.ends_with("\r\n")) {
+            sendText(txt);
+            return;
+        }
+        if(txt.ends_with("\n")) {
+            std::string new_text = txt.substr(0, txt.size()-1);
+            new_text.append("\r\n");
+            sendText(new_text);
+            return;
+        }
+        std::string new_text = txt + "\r\n";
+        sendText(new_text);
+    }
+
+    void TelnetProtocol::sendPrompt(const std::string &prompt) {
+        sendText(prompt);
+    }
+
     void TelnetProtocol::sendBytes(const std::vector<uint8_t> &data) {
 
         if(conn.details.clientType == ring::net::TcpTelnet || conn.details.clientType == ring::net::TlsTelnet) {
@@ -368,6 +418,28 @@ namespace ring::telnet {
             }
 
         }
+    }
+
+    nlohmann::json TelnetProtocol::serialize() {
+        nlohmann::json j;
+
+        j["app_data"] = app_data;
+        j["handlers"] = serializeHandlers();
+        return j;
+    }
+
+    nlohmann::json TelnetProtocol::serializeHandlers() {
+        auto j = nlohmann::json::array();
+
+        for(const auto& h : handlers) {
+            nlohmann::json j2 = {
+                    {"code", h.first},
+                    {"data", h.second.serialize()}
+            };
+            j.push_back(j2);
+        }
+
+        return j;
     }
 
 }

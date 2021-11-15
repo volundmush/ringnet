@@ -30,6 +30,12 @@ CPMAddPackage(
         VERSION 3.10.4
 )
 
+CPMAddPackage(
+        NAME cppccodec
+        GITHUB_REPOSITORY tplgy/cppcodec
+        VERSION 0.2
+)
+
 file(GLOB RINGNET_INCLUDE include/ringnet/*.h)
 file(GLOB RINGNET_SRC src/*.cpp)
 
@@ -39,6 +45,11 @@ set(CMAKE_CXX_FLAGS "-fpermissive")
 add_library(ringnet ${RINGNET_INCLUDE} ${RINGNET_SRC})
 link_libraries(ringnet)
 
-include_directories(PUBLIC include ${asio_SOURCE_DIR}/asio/include ${entt_SOURCE_DIR}/single_include ${json_SOURCE_DIR}/single_include)
+include_directories(PUBLIC include
+        ${asio_SOURCE_DIR}/asio/include
+        ${entt_SOURCE_DIR}/single_include
+        ${json_SOURCE_DIR}/single_include
+        ${cppcodec_SOURCE_DIR}/cppcodec
+)
 
 add_executable(ringnet_test apps/ringnet_test.cpp)

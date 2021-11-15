@@ -6,10 +6,11 @@
 #include <thread>
 #include "ringnet/net.h"
 #include "ringnet/telnet.h"
+#include "base64_default_rfc4648.hpp"
 
 namespace ring::net {
 
-    asio::io_context executor;
+    asio::io_context *executor = new asio::io_context;
 
     std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
 
@@ -30,7 +31,42 @@ namespace ring::net {
     bool client_details::supportsOOB() const {
         if(clientType == WebSocket) return true;
         return gmcp || msdp;
+    }
 
+    nlohmann::json client_details::serialize() {
+        nlohmann::json j = {
+                {"clientType", clientType},
+                {"colorType", colorType},
+                {"clientName", clientName},
+                {"clientVersion", clientVersion},
+                {"hostIp", hostIp},
+                {"hostName", hostName},
+                {"width", width},
+                {"height", height},
+                {"utf8", utf8},
+                {"screen_reader", screen_reader},
+                {"proxy", proxy},
+                {"osc_color_palette", osc_color_palette},
+                {"vt100", vt100},
+                {"mouse_tracking", mouse_tracking},
+                {"naws", naws},
+                {"msdp", msdp},
+                {"gmcp", gmcp},
+                {"mccp2", mccp2},
+                {"mccp2_active", mccp2_active},
+                {"mccp3", mccp3},
+                {"mccp3_active", mccp3_active},
+                {"mtts", mtts},
+                {"ttype", ttype},
+                {"mnes", mnes},
+                {"suppress_ga", suppress_ga},
+                {"force_endline", force_endline},
+                {"linemode", linemode},
+                {"mssp", mssp},
+                {"mxp", mxp},
+                {"mxp_active", mxp_active}
+        };
+        return j;
     }
 
     void socket_buffers::write(const std::vector<uint8_t> &data) {
@@ -39,6 +75,15 @@ namespace ring::net {
         memcpy(prep.data(), data.data(), data.size());
         out_buffer.commit(data.size());
         out_mutex.unlock();
+    }
+
+    nlohmann::json socket_buffers::serialize() const {
+        using base64 = cppcodec::base64_rfc4648;
+        nlohmann::json j = {
+                {"in_buffer", base64::encode((uint8_t*)in_buffer.data().data(), in_buffer.data().size())},
+                {"out_buffer", base64::encode((uint8_t*)out_buffer.data().data(), out_buffer.data().size())}
+        };
+        return j;
     }
 
     connection_details::connection_details(int con, ClientType ctype) : details(ctype) {
@@ -93,16 +138,64 @@ namespace ring::net {
 
     void connection_details::queueJson(const nlohmann::json &json) {
         in_queue_mutex.lock();
-        queue_in.push(json);
+        queue_in.push_back(json);
         in_queue_mutex.unlock();
         on_receive_cb(conn_id);
     }
 
-    plain_socket::plain_socket() : socket(executor) {
+    void connection_details::sendJson(const nlohmann::json &json) {
+        if(telnetProtocol) {
+
+        }
+    }
+
+    void connection_details::sendText(const std::string &txt, TextType mode) {
+        if(telnetProtocol) {
+            switch(mode) {
+                case Line:
+                    telnetProtocol->sendLine(txt);
+                    break;
+                case Text:
+                    telnetProtocol->sendText(txt);
+                    break;
+                case Prompt:
+                    telnetProtocol->sendPrompt(txt);
+                    break;
+            }
+        }
+    }
+
+    void connection_details::sendMSSP(const std::vector<std::pair<std::string, std::string>> &pairs) {
 
     }
 
+    void connection_details::receiveMSSP() {
+        nlohmann::json j = {
+                {"msg_type", 3},
+                {"data", nullptr}
+        };
+        queueJson(j);
+    }
 
+    nlohmann::json connection_details::serialize() {
+        nlohmann::json j;
+
+        j["details"] = details.serialize();
+        if(telnetProtocol) {
+            j["telnetProtocol"] = telnetProtocol->serialize();
+        }
+        if(buffers) {
+            j["buffers"] = buffers->serialize();
+        }
+        if(!queue_in.empty()) {
+            j["queue"] = queue_in;
+        }
+        return j;
+    }
+
+    plain_socket::plain_socket() : socket(*executor) {
+
+    }
 
     void plain_socket::send() {
         if(!isWriting) {
@@ -158,7 +251,7 @@ namespace ring::net {
     }
 
     plain_telnet_listen::plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man)
-    : manager(man), acceptor(executor, endp) {}
+    : manager(man), acceptor(*executor, endp) {}
 
     void plain_telnet_listen::listen() {
         if(!isListening) {
@@ -185,7 +278,7 @@ namespace ring::net {
         }
     }
 
-    ListenManager::ListenManager() {};
+    ListenManager::ListenManager() = default;
 
     bool ListenManager::readyTLS() {return false;};
 
@@ -240,10 +333,16 @@ namespace ring::net {
         }
         // quick and dirty
         for(int i = 0; i < std::thread::hardware_concurrency() - 1; i++) {
-            std::thread t([](){executor.run();});
+            std::thread t([](){executor->run();});
             manager.threads.push_back(std::move(t));
         }
-        executor.run();
+        executor->run();
+
+        for(auto &t : manager.threads) {
+            t.join();
+        }
+        manager.threads.clear();
+
     }
 
     void ListenManager::closeConn(int conn_id) {
@@ -255,6 +354,34 @@ namespace ring::net {
 
         connections.erase(conn_id);
         conn_mutex.unlock();
+    }
+
+    nlohmann::json ListenManager::serialize() {
+        nlohmann::json j;
+
+        j["plainTelnetListeners"] = serializePlainTelnetListeners();
+        j["connections"] = serializeConnections();
+
+        return j;
+    }
+
+    nlohmann::json ListenManager::serializePlainTelnetListeners() {
+        auto j = nlohmann::json::array();
+        for(const auto& t : plain_telnet_listeners) {
+            j.push_back(nlohmann::json{
+                    {"socket", t.second->acceptor.native_handle()},
+                    {"port", t.first},
+            });
+        }
+        return j;
+    }
+
+    nlohmann::json ListenManager::serializeConnections() {
+        auto j = nlohmann::json::array();
+        for(const auto& t : connections) {
+            j.push_back(t.second->serialize());
+        }
+        return j;
     }
 
 }

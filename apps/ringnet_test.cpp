@@ -6,7 +6,7 @@
 #include "ringnet/net.h"
 
 void announce_ready(int conn_id) {
-    std::cout << "An Entity is ready!" << std::endl;
+    std::cout << "Connection " << conn_id << "ready." << std::endl;
 }
 
 void close_cb(int conn_id) {
@@ -17,6 +17,11 @@ void receive_cb(int conn_id) {
     auto conn = ring::net::manager.connections.at(conn_id);
     auto data = conn->queue_in.front();
     std::cout << data << std::endl;
+    conn->queue_in.pop_front();
+
+    std::cout << ring::net::manager.serialize() << std::endl;
+    ring::net::executor->stop();
+
 }
 
 int main(int argc, char **argv) {
@@ -26,4 +31,7 @@ int main(int argc, char **argv) {
 
     if(ring::net::manager.listenPlainTelnet("0.0.0.0", 2008))
         ring::net::run();
+    delete ring::net::executor;
+    std::cout << "okay we done!" << std::endl;
+
 }
