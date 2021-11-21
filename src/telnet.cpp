@@ -80,13 +80,13 @@ namespace ring::telnet {
                                     break;
                                 }
                                 // we have a winner!;
-                                b--;
                                 response.emplace(TelnetMsgType::Subnegotiation);
                                 response.value().codes[0] = option;
-                                std::copy(sub, b, response.value().data.begin());
+                                std::copy(sub, --b, response.value().data.begin());
                                 buf.consume(5 + response.value().data.size());
                                 return response;
                         }
+                        b++;
                     }
                     // if we finished the while loop, we don't have enough data, so...
                     return {};
