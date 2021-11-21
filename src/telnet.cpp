@@ -355,7 +355,7 @@ namespace ring::telnet {
 
     void TelnetProtocol::handleNegotiate(const TelnetMessage &msg) {
         using namespace codes;
-        if(!handlers.contains(msg.data[1])) {
+        if(!handlers.count(msg.data[1])) {
             switch(msg.data[0]) {
                 case WILL:
                     sendNegotiate(DONT, msg.data[1]);
@@ -373,7 +373,7 @@ namespace ring::telnet {
     }
 
     void TelnetProtocol::handleSubnegotiate(const TelnetMessage &msg) {
-        if(handlers.contains(msg.data[0])) {
+        if(handlers.count(msg.data[0])) {
             auto hand = handlers.at(msg.data[0]);
             hand.subNegotiate(msg);
         }
@@ -385,23 +385,35 @@ namespace ring::telnet {
     }
 
     void TelnetProtocol::sendText(const std::string &txt) {
-        std::vector<uint8_t> data(txt.begin(), txt.end());
+        std::vector<uint8_t> data;
+        for(const auto &c : txt) {
+            switch(c) {
+                case '\r':
+                    break;
+                case '\n':
+                    data.push_back('\r');
+                    data.push_back('\n');
+                    break;
+                default:
+                    data.push_back(c);
+                    break;
+            }
+        }
         sendBytes(data);
     }
 
     void TelnetProtocol::sendLine(const std::string &txt) {
-        if(txt.ends_with("\r\n")) {
+        if(txt.empty()) {
+            sendText("\n");
+            return;
+        }
+
+        if(txt[txt.size()-1] == '\n') {
             sendText(txt);
             return;
         }
-        if(txt.ends_with("\n")) {
-            std::string new_text = txt.substr(0, txt.size()-1);
-            new_text.append("\r\n");
-            sendText(new_text);
-            return;
-        }
-        std::string new_text = txt + "\r\n";
-        sendText(new_text);
+        sendText(txt + "\n");
+        return;
     }
 
     void TelnetProtocol::sendPrompt(const std::string &prompt) {

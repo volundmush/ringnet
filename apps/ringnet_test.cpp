@@ -19,24 +19,29 @@ void close_cb(int conn_id) {
     std::cout << "Connection " << conn_id << " closed." << std::endl;
 }
 
-void receive_cb(int conn_id) {
-    auto conn = ring::net::manager.connections.at(conn_id);
-    auto data = conn->queue_in.front();
-    std::cout << data << std::endl;
-    conn->queue_in.pop_front();
-    ring::net::manager.copyover();
-}
-
-void copyover_cb(nlohmann::json& j) {
+void copyover_cb() {
+    auto j = ring::net::manager.copyover();
     std::cout << "initializing copyover" << std::endl;
     std::cout << j << std::endl;
     std::ofstream of(cpath.string());
     of << j << std::endl;
     of.close();
-    copyover = true;
 }
 
-void copyover_recover(nlohmann::json& j) {
+void receive_cb(int conn_id) {
+    auto conn = ring::net::manager.connections.at(conn_id);
+    auto data = conn->queue_in.front();
+    std::cout << data << std::endl;
+    std::string txt = data["data"]["text"];
+    conn->queue_in.pop_front();
+    if(txt == "copyover") {
+        std::cout << "Running a copyover!" << std::endl;
+        copyover = true;
+        copyover_cb();
+    }
+}
+
+void copyover_recover() {
     std::cout << "DID IT WORK?" << std::endl;
     for(const auto &l : ring::net::manager.plain_telnet_listeners) {
         std::cout << "PLAIN TELNET " << l.first << ": " << l.second->acceptor.native_handle() << std::endl;
@@ -47,8 +52,6 @@ int main(int argc, char **argv) {
     ring::net::on_ready_cb = announce_ready;
     ring::net::on_close_cb = close_cb;
     ring::net::on_receive_cb = receive_cb;
-    ring::net::copyover_prepare_cb = copyover_cb;
-    ring::net::copyover_recover_cb = copyover_recover;
 
     bool copyover_recovered = false;
 
@@ -68,8 +71,8 @@ int main(int argc, char **argv) {
     if(copyover_recovered) {
         std::cout << "Recovered from copyover!" << std::endl;
         remove(cpath.string().c_str());
+        copyover_recover();
     }
-
 
     ring::net::manager.run();
 
@@ -79,6 +82,4 @@ int main(int argc, char **argv) {
     } else {
         std::cout << "okay we done!" << std::endl;
     }
-
-
 }

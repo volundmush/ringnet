@@ -5,13 +5,8 @@
 #ifndef RINGMUD_NET_H
 #define RINGMUD_NET_H
 
-#include <mutex>
-#include <memory>
-#include <list>
-#include <functional>
-#include <unordered_map>
-#include <unordered_set>
-#include <atomic>
+#include "sysdeps.h"
+
 #include "asio.hpp"
 #include "nlohmann/json.hpp"
 #include "telnet.h"
@@ -22,8 +17,6 @@ namespace ring::net {
     extern asio::io_context *executor;
 
     extern std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
-    extern std::function<void(nlohmann::json& j)> copyover_prepare_cb, copyover_recover_cb;
-
 
     enum ClientType : uint8_t {
         TcpTelnet = 0,
@@ -75,12 +68,14 @@ namespace ring::net {
         asio::streambuf in_buffer, out_buffer;
         std::mutex out_mutex;
         void write(const std::vector<uint8_t> &data);
-        void load();
         nlohmann::json serialize() const;
+        socket_buffers();
+        socket_buffers(nlohmann::json &j);
     };
 
     struct plain_socket {
         explicit plain_socket();
+        plain_socket(asio::ip::tcp prot, int socket);
         asio::ip::tcp::socket socket;
         bool isWriting = false;
         bool isReading = false;
@@ -89,10 +84,12 @@ namespace ring::net {
         void send();
         void receive();
         void onDataReceived();
+        nlohmann::json serialize();
     };
 
     struct connection_details {
         connection_details(int con, ClientType ctype);
+        connection_details(const nlohmann::json &j);
         ~connection_details();
         int conn_id;
         client_details details;
@@ -112,13 +109,13 @@ namespace ring::net {
         void queueJson(const nlohmann::json& json);
         void receiveMSSP();
         nlohmann::json serialize();
-        void load(nlohmann::json &j);
+        void resume();
 
     };
 
     struct plain_telnet_listen {
         plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man);
-        plain_telnet_listen(int socket, ListenManager &man);
+        plain_telnet_listen(ListenManager &man, asio::ip::tcp prot, int socket);
         asio::ip::tcp::acceptor acceptor;
         plain_socket *queued_socket;
         ListenManager &manager;
@@ -140,11 +137,10 @@ namespace ring::net {
         std::mutex conn_mutex;
         void closeConn(int conn_id);
         void run();
-        void copyover();
+        nlohmann::json copyover();
         std::vector<std::thread> threads;
         void copyoverRecover(nlohmann::json &json);
         nlohmann::json serialize();
-        bool do_copyover = false;
         std::unordered_map<uint16_t, std::unique_ptr<plain_telnet_listen>> plain_telnet_listeners;
     protected:
 
@@ -154,6 +150,7 @@ namespace ring::net {
         nlohmann::json serializePlainTelnetListeners();
         nlohmann::json serializeConnections();
         void loadPlainTelnetListeners(nlohmann::json &j);
+        void loadConnections(nlohmann::json &j);
 
     };
 

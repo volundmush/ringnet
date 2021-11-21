@@ -2,8 +2,7 @@
 // Created by volund on 11/12/21.
 //
 
-#include <iostream>
-#include <thread>
+
 #include "ringnet/net.h"
 #include "ringnet/telnet.h"
 #include "base64_default_rfc4648.hpp"
@@ -13,7 +12,6 @@ namespace ring::net {
     asio::io_context *executor = new asio::io_context;
 
     std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
-    std::function<void(nlohmann::json& j)> copyover_prepare_cb, copyover_recover_cb;
 
     client_details::client_details(ClientType ctype) {
         clientType = ctype;
@@ -70,6 +68,51 @@ namespace ring::net {
         return j;
     }
 
+    void client_details::load(nlohmann::json &j) {
+        clientType = j["clientType"];
+        colorType = j["colorType"];
+        clientName = j["clientName"];
+        clientVersion = j["clientVersion"];
+        hostIp = j["hostIp"];
+        hostName = j["hostName"];
+        width = j["width"];
+        height = j["height"];
+        utf8 = j["utf8"];
+        screen_reader = j["screen_reader"];
+        proxy = j["proxy"];
+        osc_color_palette = j["osc_color_palette"];
+        vt100 = j["vt100"];
+        mouse_tracking = j["mouse_tracking"];
+        naws = j["naws"];
+        msdp = j["msdp"];
+        gmcp = j["gmcp"];
+        mccp2 = j["mccp2"];
+        mccp2_active = j["mccp2_active"];
+        mccp3 = j["mccp3"];
+        mccp3_active = j["mccp3_active"];
+        mtts = j["mtts"];
+        ttype = j["ttype"];
+        mnes = j["mnes"];
+        suppress_ga = j["suppress_ga"];
+        force_endline = j["force_endline"];
+        linemode = j["linemode"];
+        mssp = j["mssp"];
+        mxp = j["mxp"];
+        mxp_active = j["mxp_active"];
+    }
+
+    socket_buffers::socket_buffers() {
+
+    }
+
+    socket_buffers::socket_buffers(nlohmann::json &j) {
+        using base64 = cppcodec::base64_rfc4648;
+        std::string in_data = j["in_buffer"], out_data = j["out_buffer"];
+        if(!in_data.empty()) {
+
+        }
+    }
+
     void socket_buffers::write(const std::vector<uint8_t> &data) {
         out_mutex.lock();
         auto prep = out_buffer.prepare(data.size());
@@ -94,6 +137,38 @@ namespace ring::net {
             case TlsTelnet:
                 buffers = new socket_buffers;
                 telnetProtocol = new telnet::TelnetProtocol(*this);
+                break;
+            default:
+                break;
+        }
+    }
+
+    connection_details::connection_details(const nlohmann::json &j) : details(TcpTelnet) {
+        conn_id = j["conn_id"];
+        auto jd = j["details"];
+        details.load(jd);
+        if(details.clientType == TcpTelnet) {
+            auto sd = j["plainSocket"];
+            int prot_id = sd["protocol"];
+            int socket = sd["socket"];
+            plainSocket = new plain_socket(prot_id==4 ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), socket);
+            plainSocket->conn = this;
+        }
+        if(details.clientType == TlsTelnet) {
+            // Tls stuff goes here...
+        }
+
+        if(details.clientType == TcpTelnet || details.clientType == TlsTelnet) {
+            auto jbuf = j["buffers"];
+            buffers = new socket_buffers(jbuf);
+            telnetProtocol = new telnet::TelnetProtocol(*this);
+        }
+
+        switch(details.clientType) {
+            case TcpTelnet:
+            case TlsTelnet:
+                buffers = new socket_buffers;
+
                 break;
             default:
                 break;
@@ -180,7 +255,7 @@ namespace ring::net {
 
     nlohmann::json connection_details::serialize() {
         nlohmann::json j;
-
+        j["conn_id"] = conn_id;
         j["details"] = details.serialize();
         if(telnetProtocol) {
             j["telnetProtocol"] = telnetProtocol->serialize();
@@ -191,11 +266,34 @@ namespace ring::net {
         if(!queue_in.empty()) {
             j["queue"] = queue_in;
         }
+        if(plainSocket) {
+            j["plainSocket"] = plainSocket->serialize();
+        }
         return j;
+    }
+
+    void connection_details::resume() {
+        if(plainSocket) {
+            if(buffers->out_buffer.size()) {
+                plainSocket->send();
+            }
+            plainSocket->receive();
+        }
     }
 
     plain_socket::plain_socket() : socket(*executor) {
 
+    }
+
+    plain_socket::plain_socket(asio::ip::tcp prot, int socket) : socket(*executor, prot, socket) {
+
+    }
+
+    nlohmann::json plain_socket::serialize() {
+        nlohmann::json j;
+        j["socket"] = socket.native_handle();
+        j["protocol"] = socket.local_endpoint().protocol() == asio::ip::tcp::v4() ? 4 : 6;
+        return j;
     }
 
     void plain_socket::send() {
@@ -254,8 +352,8 @@ namespace ring::net {
     plain_telnet_listen::plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man)
     : manager(man), acceptor(*executor, endp) {}
 
-    plain_telnet_listen::plain_telnet_listen(int socket, ListenManager &man)
-    : acceptor(*executor, socket), manager(man) {}
+    plain_telnet_listen::plain_telnet_listen(ListenManager &man, asio::ip::tcp prot, int socket)
+    : acceptor(*executor, prot, socket), manager(man) {}
 
     void plain_telnet_listen::listen() {
         if(!isListening) {
@@ -298,7 +396,7 @@ namespace ring::net {
     }
 
     asio::ip::tcp::endpoint ListenManager::create_endpoint(const std::string &ip, uint16_t port) {
-        if(ports.contains(port)) {
+        if(ports.count(port)) {
             std::cerr << "Port is already in use: " << port << std::endl;
             exit(1);
         }
@@ -347,24 +445,18 @@ namespace ring::net {
         }
         manager.threads.clear();
 
-        auto j = serialize();
-
-        if(do_copyover) {
-            copyover_prepare_cb(j);
-        }
-
-        delete executor;
-
     }
 
-    void ListenManager::copyover() {
-        do_copyover = true;
+    nlohmann::json ListenManager::copyover() {
         executor->stop();
+        auto j = serialize();
+        delete executor;
+        return j;
     }
 
     void ListenManager::closeConn(int conn_id) {
         conn_mutex.lock();
-        if(!connections.contains(conn_id)) {
+        if(!connections.count(conn_id)) {
             conn_mutex.unlock();
             return;
         }
@@ -375,7 +467,8 @@ namespace ring::net {
 
     nlohmann::json ListenManager::serialize() {
         nlohmann::json j;
-
+        int val = next_id;
+        j["next_id"] = val;
         j["plainTelnetListeners"] = serializePlainTelnetListeners();
         j["connections"] = serializeConnections();
 
@@ -385,10 +478,17 @@ namespace ring::net {
     nlohmann::json ListenManager::serializePlainTelnetListeners() {
         auto j = nlohmann::json::array();
         for(const auto& t : plain_telnet_listeners) {
-            j.push_back(nlohmann::json{
+            nlohmann::json j2 = {
                     {"socket", t.second->acceptor.native_handle()},
-                    {"port", t.first},
-            });
+                    {"port", t.first}
+            };
+            if(t.second->acceptor.local_endpoint().protocol() == asio::ip::tcp::v4()) {
+                j2["protocol_type"] = 4;
+            } else {
+                j2["protocol_type"] = 6;
+            }
+
+            j.push_back(j2);
         }
         return j;
     }
@@ -402,20 +502,39 @@ namespace ring::net {
     }
 
     void ListenManager::copyoverRecover(nlohmann::json &json) {
+        next_id = json["next_id"];
         if(json.contains("plainTelnetListeners")) {
             loadPlainTelnetListeners(json.at("plainTelnetListeners"));
         }
 
-        copyover_recover_cb(json);
+        if(json.contains("connections")) {
+            loadConnections(json.at("connections"));
+        }
+
+        for(auto &l : plain_telnet_listeners) {
+            l.second->listen();
+        }
+
+        for(auto &c : connections) {
+            c.second->resume();
+        }
     }
 
     void ListenManager::loadPlainTelnetListeners(nlohmann::json &j) {
         for(const auto &j2 : j) {
             int socket = j2["socket"];
-            auto p = new plain_telnet_listen(socket, *this);
+            int prot = j2["protocol_type"];
+            auto p = new plain_telnet_listen(*this, prot==4 ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), socket);
             int port = j2["port"];
             ports.insert(port);
             plain_telnet_listeners.emplace(port, p);
+        }
+    }
+
+    void ListenManager::loadConnections(nlohmann::json &j) {
+        for(const auto &j2 : j) {
+            int conn_id = j2["conn_id"];
+            connections.emplace(conn_id, new connection_details(j2));
         }
     }
 

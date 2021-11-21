@@ -39,7 +39,7 @@ CPMAddPackage(
 file(GLOB RINGNET_INCLUDE include/ringnet/*.h)
 file(GLOB RINGNET_SRC src/*.cpp)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-fpermissive")
 
 add_library(ringnet ${RINGNET_INCLUDE} ${RINGNET_SRC})

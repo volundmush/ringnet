@@ -5,12 +5,7 @@
 #ifndef RINGMUD_TELNET_H
 #define RINGMUD_TELNET_H
 
-#include <cstdint>
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include <map>
-#include <optional>
+#include "sysdeps.h"
 #include "asio.hpp"
 #include "nlohmann/json.hpp"
 
@@ -94,6 +89,7 @@ namespace ring::telnet {
     class TelnetProtocol {
     public:
         explicit TelnetProtocol(net::connection_details &det);
+        TelnetProtocol(net::connection_details &det, nlohmann::json &j);
         void handleMessage(const TelnetMessage &msg);
         void handleAppData(const TelnetMessage &msg);
         void handleCommand(const TelnetMessage &msg);
@@ -108,7 +104,6 @@ namespace ring::telnet {
         void sendMSSP(std::map<std::string, std::string>& data);
         void start(), onConnect();
         net::connection_details &conn;
-        void load(nlohmann::json &json);
         nlohmann::json serialize();
         nlohmann::json serializeHandlers();
     private:
