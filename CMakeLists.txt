@@ -19,12 +19,6 @@ CPMAddPackage(
 )
 
 CPMAddPackage(
-        NAME entt
-        GITHUB_REPOSITORY skypjack/entt
-        VERSION 3.8.1
-)
-
-CPMAddPackage(
         NAME json
         GITHUB_REPOSITORY nlohmann/json
         VERSION 3.10.4
@@ -47,7 +41,6 @@ link_libraries(ringnet)
 
 include_directories(PUBLIC include
         ${asio_SOURCE_DIR}/asio/include
-        ${entt_SOURCE_DIR}/single_include
         ${json_SOURCE_DIR}/single_include
         ${cppcodec_SOURCE_DIR}/cppcodec
 )
