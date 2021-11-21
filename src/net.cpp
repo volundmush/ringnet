@@ -421,7 +421,7 @@ namespace ring::net {
 
     ListenManager manager;
 
-    void ListenManager::run() {
+    void ListenManager::run(bool threading) {
         if(!on_ready_cb) {
             std::cerr << "Error! on_ready_cb not set." << std::endl;
             exit(1);
@@ -434,17 +434,21 @@ namespace ring::net {
             std::cerr << "Error! on_receive_cb not set." << std::endl;
         }
         // quick and dirty
-        for(int i = 0; i < std::thread::hardware_concurrency() - 1; i++) {
-            std::thread t([](){executor->run();});
-            manager.threads.push_back(std::move(t));
+        if(threading) {
+            for(int i = 0; i < std::thread::hardware_concurrency() - 1; i++) {
+                std::thread t([](){executor->run();});
+                manager.threads.push_back(std::move(t));
+            }
         }
+
         executor->run();
 
-        for(auto &t : manager.threads) {
-            t.join();
+        if(threading) {
+            for(auto &t : manager.threads) {
+                t.join();
+            }
+            manager.threads.clear();
         }
-        manager.threads.clear();
-
     }
 
     nlohmann::json ListenManager::copyover() {
