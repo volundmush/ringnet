@@ -355,26 +355,26 @@ namespace ring::telnet {
 
     void TelnetProtocol::handleNegotiate(const TelnetMessage &msg) {
         using namespace codes;
-        if(!handlers.count(msg.data[1])) {
-            switch(msg.data[0]) {
+        if(!handlers.count(msg.codes[1])) {
+            switch(msg.codes[0]) {
                 case WILL:
-                    sendNegotiate(DONT, msg.data[1]);
+                    sendNegotiate(DONT, msg.codes[1]);
                     break;
                 case DO:
-                    sendNegotiate(WONT, msg.data[1]);
+                    sendNegotiate(WONT, msg.codes[1]);
                     break;
                 default:
                     break;
             }
             return;
         }
-        auto hand = handlers.at(msg.data[1]);
-        hand.receiveNegotiate(msg.data[0]);
+        auto hand = handlers.at(msg.codes[1]);
+        hand.receiveNegotiate(msg.codes[0]);
     }
 
     void TelnetProtocol::handleSubnegotiate(const TelnetMessage &msg) {
-        if(handlers.count(msg.data[0])) {
-            auto hand = handlers.at(msg.data[0]);
+        if(handlers.count(msg.codes[0])) {
+            auto hand = handlers.at(msg.codes[0]);
             hand.subNegotiate(msg);
         }
     }
