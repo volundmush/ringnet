@@ -340,15 +340,10 @@ namespace ring::net {
     void plain_socket::onDataReceived() {
         auto &details = conn->details;
 
-        auto before_size = conn->buffers->in_buffer.size();
-
         if(details.clientType == TcpTelnet || details.clientType == TlsTelnet) {
-            auto msg = ring::telnet::parse_message(conn->buffers->in_buffer);
-            if(msg.has_value()) {
+            while(auto msg = ring::telnet::parse_message(conn->buffers->in_buffer)) {
                 conn->telnetProtocol->handleMessage(msg.value());
             }
-            auto after_size = conn->buffers->in_buffer.size();
-            auto after_size2 = conn->buffers->in_buffer.size();
         }
     }
 
