@@ -444,8 +444,6 @@ namespace ring::net {
         }
         manager.threads.clear();
 
-        plain_telnet_listeners.clear();
-
         delete executor;
     }
 
