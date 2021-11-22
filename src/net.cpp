@@ -443,12 +443,15 @@ namespace ring::net {
             t.join();
         }
         manager.threads.clear();
+
+        plain_telnet_listeners.clear();
+
+        delete executor;
     }
 
     nlohmann::json ListenManager::copyover() {
         executor->stop();
         auto j = serialize();
-        delete executor;
         running = false;
         return j;
     }
