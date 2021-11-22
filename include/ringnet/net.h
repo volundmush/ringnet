@@ -76,6 +76,7 @@ namespace ring::net {
     struct plain_socket {
         explicit plain_socket();
         plain_socket(asio::ip::tcp prot, int socket);
+        ~plain_socket();
         asio::ip::tcp::socket socket;
         bool isWriting = false;
         bool isReading = false;

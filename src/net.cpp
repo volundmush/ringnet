@@ -289,6 +289,10 @@ namespace ring::net {
 
     }
 
+    plain_socket::~plain_socket() {
+        socket.cancel();
+    }
+
     nlohmann::json plain_socket::serialize() {
         nlohmann::json j;
         j["socket"] = socket.native_handle();
