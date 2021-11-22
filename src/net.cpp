@@ -114,7 +114,10 @@ namespace ring::net {
     }
 
     void socket_buffers::write(const std::vector<uint8_t> &data) {
-        out_mutex.lock();
+        while(!out_mutex.try_lock()) {
+            if(!ring::net::manager.running) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
         auto prep = out_buffer.prepare(data.size());
         memcpy(prep.data(), data.data(), data.size());
         out_buffer.commit(data.size());
@@ -446,6 +449,7 @@ namespace ring::net {
         executor->stop();
         auto j = serialize();
         delete executor;
+        running = false;
         return j;
     }
 

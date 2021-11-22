@@ -140,6 +140,7 @@ namespace ring::net {
         std::vector<std::thread> threads;
         void copyoverRecover(nlohmann::json &json);
         nlohmann::json serialize();
+        bool running = true;
         std::unordered_map<uint16_t, std::unique_ptr<plain_telnet_listen>> plain_telnet_listeners;
     protected:
 
