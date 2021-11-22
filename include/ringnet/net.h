@@ -54,7 +54,7 @@ namespace ring::net {
         bool utf8 = false, screen_reader = false, proxy = false, osc_color_palette = false;
         bool vt100 = false, mouse_tracking = false, naws = false, msdp = false, gmcp = false;
         bool mccp2 = false, mccp2_active = false, mccp3 = false, mccp3_active = false;
-        bool mtts = false, ttype = false, mnes = false, suppress_ga = false;
+        bool mtts = false, ttype = false, mnes = false, suppress_ga = false, mslp = false;
         bool force_endline = false, linemode = false, mssp = false, mxp = false, mxp_active = false;
 
         explicit client_details(ClientType ctype);

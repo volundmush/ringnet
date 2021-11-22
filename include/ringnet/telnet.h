@@ -82,8 +82,14 @@ namespace ring::telnet {
         uint8_t code;
         void load(nlohmann::json& j);
         nlohmann::json serialize() const;
+        std::string mtts_last;
     protected:
         TelnetProtocol &protocol;
+        int mtts_count = 0;
+        void subMTTS(const TelnetMessage &msg);
+        void subMTTS_0(const std::string mtts);
+        void subMTTS_1(const std::string mtts);
+        void subMTTS_2(const std::string mtts);
     };
 
     class TelnetProtocol {

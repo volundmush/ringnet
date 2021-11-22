@@ -367,7 +367,7 @@ namespace ring::net {
                     manager.connections.emplace(new_conn->conn_id, new_conn);
                     manager.conn_mutex.unlock();
                     new_conn->plainSocket->receive();
-                    new_conn->telnetProtocol->start();
+                    new_conn->telnetProtocol->onConnect();
                 } else {
                     // Oops, something bad happened. handle it!
                 }

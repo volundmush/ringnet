@@ -179,7 +179,13 @@ namespace ring::telnet {
     }
 
     void TelnetOption::enableRemote() {
-
+        using namespace codes;
+        switch(code) {
+            case MTTS:
+                protocol.conn.details.mtts = true;
+                protocol.sendSub(code, std::vector<uint8_t>({1}));
+                break;
+        }
     }
 
     void TelnetOption::disableLocal() {
@@ -263,6 +269,184 @@ namespace ring::telnet {
     }
 
     void TelnetOption::subNegotiate(const TelnetMessage &msg) {
+        using namespace codes;
+        switch(code) {
+            case MTTS:
+                subMTTS(msg);
+                break;
+        }
+    }
+
+    void TelnetOption::subMTTS(const TelnetMessage &msg) {
+        if(msg.data.empty()) return; // we need data to be useful.
+        if(msg.data[0] != 0) return; // this is invalid MTTS.
+        if(msg.data.size() < 2) return; // we need at least some decent amount of data to be useful.
+
+        std::string mtts;
+        auto begin = msg.data.begin();
+        begin++;
+        // fill that string up and uppercase it.
+        std::copy(begin, msg.data.end(), std::back_inserter(mtts));
+        std::transform(mtts.begin(), mtts.end(), mtts.begin(), ::toupper);
+
+        if(mtts == mtts_last) // there is no more data to be gleaned from asking...
+            return;
+
+        switch(mtts_count) {
+            case 0:
+                subMTTS_0(mtts);
+                break;
+            case 1:
+                subMTTS_1(mtts);
+                break;
+            case 2:
+                subMTTS_2(mtts);
+                break;
+        }
+
+        mtts_count++;
+        // cache the results and request more info.
+        mtts_last = mtts;
+        if(mtts_count >= 2) return; // there is no more info to request.
+        protocol.sendSub(code, std::vector<uint8_t>({1}));
+
+    }
+
+    void TelnetOption::subMTTS_0(const std::string mtts) {
+        auto first_space = std::find(mtts.begin(), mtts.end(), " ");
+        if(first_space != mtts.end()) {
+            protocol.conn.details.clientName.clear();
+            std::copy(mtts.begin(), first_space-1, std::back_inserter(protocol.conn.details.clientName));
+
+            protocol.conn.details.clientVersion.clear();
+            std::copy(first_space+1, mtts.end(), std::back_inserter(protocol.conn.details.clientVersion));
+        } else {
+            protocol.conn.details.clientName = mtts;
+        }
+
+        auto &details = protocol.conn.details;
+        auto &name = details.clientName;
+        auto &version = details.clientVersion;
+
+        if((name == "ATLANTIS") || (name == "CMUD") || (name == "KILDCLIENT") || (name == "MUDLET") ||
+            (name == "PUTTY") || (name == "BEIP") || (name == "POTATO") || (name == "TINYFUGUE") || (name == "MUSHCLIENT")) {
+            details.colorType = ring::net::XtermColor;
+        }
+
+        // all clients that support MTTS probably support ANSI...
+        if(!details.colorType) {
+            details.colorType = ring::net::StandardColor;
+        }
+    }
+
+    void TelnetOption::subMTTS_1(const std::string mtts) {
+        // the second MTTS negotiation gives the terminal type.
+        auto sep = std::find(mtts.begin(), mtts.end(), "-");
+        std::string termtype, extra;
+
+        if(sep != mtts.end()) {
+            std::copy(mtts.begin(), sep-1, std::back_inserter(termtype));
+            std::copy(sep+1, mtts.end(), std::back_inserter(extra));
+        } else {
+            termtype = mtts;
+        }
+
+        auto &details = protocol.conn.details;
+
+        if(termtype == "ANSI") {
+            if(!details.colorType) {
+                details.colorType = ring::net::StandardColor;
+            }
+        } else if (termtype == "VT100") {
+            if(!details.colorType) {
+                details.colorType = ring::net::StandardColor;
+            }
+            details.vt100 = true;
+        } else if(termtype == "XTERM") {
+            details.colorType = ring::net::XtermColor;
+            details.vt100 = true;
+        }
+
+        if(extra == "256COLOR") {
+            details.colorType = ring::net::XtermColor;
+        } else if (extra == "TRUECOLOR") {
+            details.colorType = ring::net::TrueColor;
+        }
+    }
+
+    void TelnetOption::subMTTS_2(const std::string mtts) {
+        auto sep = std::find(mtts.begin(), mtts.end(), " ");
+        if(sep == mtts.end()) return;
+
+        std::string mt, val;
+        std::copy(mtts.begin(), sep-1, std::back_inserter(mt));
+        std::copy(sep+1, mtts.end(), std::back_inserter(val));
+
+        if(mt != "MTTS") return;
+
+        int v = atoi(val.c_str());
+
+        auto &details = protocol.conn.details;
+
+        // ANSI
+        if(v & 1) {
+            if(!details.colorType) {
+                details.colorType = ring::net::StandardColor;
+            }
+        }
+
+        // VT100
+        if(v & 2) {
+            details.vt100 = true;
+        }
+
+        // UTF8
+        if(v & 4) {
+            details.utf8 = true;
+        }
+
+        // XTERM256 colors
+        if(v & 8) {
+            if(details.colorType < ring::net::XtermColor) {
+                details.colorType = ring::net::XtermColor;
+            }
+        }
+
+        // MOUSE TRACKING - who even uses this?
+        if(v & 16) {
+            details.mouse_tracking = true;
+        }
+
+        // On-screen color palette - again, is this even used?
+        if(v & 32) {
+            details.osc_color_palette = true;
+        }
+
+        // client uses a screen reader - this is actually somewhat useful for blind people...
+        // if the game is designed for it...
+        if(v & 64) {
+            details.screen_reader = true;
+        }
+
+        // PROXY - I don't think this actually works?
+        if(v & 128) {
+            details.proxy = true;
+        }
+
+        // TRUECOLOR - support for this is probably rare...
+        if(v & 256) {
+            details.colorType = ring::net::TrueColor;
+        }
+
+        // MNES - Mud New Environment Standard support.
+        if(v & 512) {
+            details.mnes = true;
+        }
+
+        // mud server link protocol ???
+        if(v & 1024) {
+            details.mslp = true;
+        }
 
     }
 
@@ -435,6 +619,15 @@ namespace ring::telnet {
             }
 
         }
+    }
+
+    void TelnetProtocol::sendSub(const uint8_t op, const std::vector<uint8_t> &data) {
+        using namespace codes;
+        std::vector<uint8_t> out({IAC, SB, op});
+        std::copy(data.begin(), data.end(), std::back_inserter(out));
+        out.push_back(IAC);
+        out.push_back(SE);
+        sendBytes(out);
     }
 
     nlohmann::json TelnetProtocol::serialize() {

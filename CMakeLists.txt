@@ -30,6 +30,7 @@ CPMAddPackage(
         VERSION 0.2
 )
 
+
 file(GLOB RINGNET_INCLUDE include/ringnet/*.h)
 file(GLOB RINGNET_SRC src/*.cpp)
 
