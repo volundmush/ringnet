@@ -419,7 +419,7 @@ namespace ring::net {
 
     ListenManager manager;
 
-    void ListenManager::run() {
+    void ListenManager::run(int threads) {
         if(!on_ready_cb) {
             std::cerr << "Error! on_ready_cb not set." << std::endl;
             exit(1);
@@ -431,10 +431,14 @@ namespace ring::net {
         if(!on_receive_cb) {
             std::cerr << "Error! on_receive_cb not set." << std::endl;
         }
+
+        int thread_count = threads;
+        if(thread_count < 1)
+            thread_count = std::thread::hardware_concurrency();
+
         // quick and dirty
-        for(int i = 0; i < std::max(std::thread::hardware_concurrency(), 2U) - 1; i++) {
-            std::thread t([](){executor->run();});
-            manager.threads.push_back(std::move(t));
+        for(int i = 0; i < thread_count - 1; i++) {
+            manager.threads.emplace_back([](){executor->run();});
         }
 
         executor->run();
