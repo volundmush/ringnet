@@ -332,8 +332,14 @@ namespace ring::net {
         auto &details = conn->details;
 
         if(details.clientType == TcpTelnet || details.clientType == TlsTelnet) {
-            while(auto msg = ring::telnet::parse_message(conn->buffers->in_buffer)) {
-                conn->telnetProtocol->handleMessage(msg.value());
+            while(true) {
+                auto msg = ring::telnet::parse_message(conn->buffers->in_buffer);
+                if(msg.has_value()) {
+                    auto msg_val = msg.value();
+                    conn->telnetProtocol->handleMessage(msg.value());
+                }
+                else
+                    break;
             }
         }
     }

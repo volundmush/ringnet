@@ -62,31 +62,36 @@ namespace ring::telnet {
                     if(available < 5) return {};
 
                     option = *(++b);
-                    sub = ++b;
+                    b++;
+                    sub = b;
                     // we must seek ahead until we have an unescaped IAC SE. If we don't have one, do nothing.
 
                     while(b != end) {
-                        switch((uint8_t)*b) {
-                            case IAC:
-                                if(match1) {
-                                    escaped = true;
-                                    match1 = false;
-                                } else {
-                                    match1 = true;
-                                }
-                                break;
-                            case SB:
-                                if(!match1) {
-                                    break;
-                                }
-                                // we have a winner!;
+                        if(escaped) {
+                            escaped = false;
+                            b++;
+                            continue;
+                        }
+                        if((uint8_t)*b == IAC) {
+                            b++;
+                            if(b != end && (uint8_t)*b == SE) {
+                                // we have a winner!
                                 response.emplace(TelnetMsgType::Subnegotiation);
                                 response.value().codes[0] = option;
-                                std::copy(sub, --b, response.value().data.begin());
-                                buf.consume(5 + response.value().data.size());
+                                b--;
+                                auto &vec = response.value().data;
+                                std::copy(sub, b, std::back_inserter(vec));
+                                buf.consume(5 + vec.size());
                                 return response;
+                            } else {
+                                escaped = true;
+                                b--;
+                                continue;
+                            }
+
+                        } else {
+                            b++;
                         }
-                        b++;
                     }
                     // if we finished the while loop, we don't have enough data, so...
                     return {};
