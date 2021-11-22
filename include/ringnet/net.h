@@ -90,12 +90,11 @@ namespace ring::net {
     struct connection_details {
         connection_details(int con, ClientType ctype);
         connection_details(const nlohmann::json &j);
-        ~connection_details();
         int conn_id;
         client_details details;
-        plain_socket *plainSocket;
-        socket_buffers *buffers = nullptr;
-        telnet::TelnetProtocol *telnetProtocol = nullptr;
+        std::shared_ptr<plain_socket> plainSocket;
+        std::shared_ptr<socket_buffers> buffers;
+        std::shared_ptr<telnet::TelnetProtocol> telnetProtocol;
         std::mutex in_queue_mutex;
         std::list<nlohmann::json> queue_in;
         bool active = true;
@@ -117,7 +116,7 @@ namespace ring::net {
         plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man);
         plain_telnet_listen(ListenManager &man, asio::ip::tcp prot, int socket);
         asio::ip::tcp::acceptor acceptor;
-        plain_socket *queued_socket;
+        std::shared_ptr<plain_socket> queued_socket;
         ListenManager &manager;
 
         bool isListening = false;

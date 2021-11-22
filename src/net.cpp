@@ -135,8 +135,8 @@ namespace ring::net {
         switch(ctype) {
             case TcpTelnet:
             case TlsTelnet:
-                buffers = new socket_buffers;
-                telnetProtocol = new telnet::TelnetProtocol(*this);
+                buffers = std::make_shared<socket_buffers>();
+                telnetProtocol = std::make_shared<telnet::TelnetProtocol>(*this);
                 break;
             default:
                 break;
@@ -151,7 +151,7 @@ namespace ring::net {
             auto sd = j["plainSocket"];
             int prot_id = sd["protocol"];
             int socket = sd["socket"];
-            plainSocket = new plain_socket(prot_id==4 ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), socket);
+            plainSocket = std::make_shared<plain_socket>(prot_id==4 ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), socket);
             plainSocket->conn = this;
         }
         if(details.clientType == TlsTelnet) {
@@ -160,25 +160,18 @@ namespace ring::net {
 
         if(details.clientType == TcpTelnet || details.clientType == TlsTelnet) {
             auto jbuf = j["buffers"];
-            buffers = new socket_buffers(jbuf);
-            telnetProtocol = new telnet::TelnetProtocol(*this);
+            buffers = std::make_shared<socket_buffers>(jbuf);
+            telnetProtocol = std::make_shared<telnet::TelnetProtocol>(*this);
         }
 
         switch(details.clientType) {
             case TcpTelnet:
             case TlsTelnet:
-                buffers = new socket_buffers;
-
+                buffers = std::make_shared<socket_buffers>();
                 break;
             default:
                 break;
         }
-    }
-
-    connection_details::~connection_details() {
-        delete buffers;
-        delete plainSocket;
-        delete telnetProtocol;
     }
 
     void connection_details::onReady() {
@@ -188,8 +181,6 @@ namespace ring::net {
 
     void connection_details::onClose() {
         if(active) on_close_cb(conn_id);
-        active = false;
-        delete plainSocket;
     }
 
     void connection_details::receiveJson(const nlohmann::json &json) {
@@ -356,13 +347,13 @@ namespace ring::net {
     void plain_telnet_listen::listen() {
         if(!isListening) {
             isListening = true;
-            queued_socket = new plain_socket;
+            queued_socket = std::make_shared<plain_socket>();
             auto handler = [&](std::error_code ec) {
                 if(!ec) {
                     auto new_conn = new connection_details(manager.next_id++, TcpTelnet);
                     queued_socket->conn = new_conn;
                     new_conn->plainSocket = queued_socket;
-                    queued_socket = nullptr;
+                    queued_socket.reset();
                     manager.conn_mutex.lock();
                     manager.connections.emplace(new_conn->conn_id, new_conn);
                     manager.conn_mutex.unlock();
@@ -454,11 +445,6 @@ namespace ring::net {
 
     void ListenManager::closeConn(int conn_id) {
         conn_mutex.lock();
-        if(!connections.count(conn_id)) {
-            conn_mutex.unlock();
-            return;
-        }
-
         connections.erase(conn_id);
         conn_mutex.unlock();
     }
