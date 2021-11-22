@@ -290,7 +290,7 @@ namespace ring::net {
     }
 
     plain_socket::~plain_socket() {
-        socket.cancel();
+        socket.close();
     }
 
     nlohmann::json plain_socket::serialize() {
