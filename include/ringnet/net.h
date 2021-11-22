@@ -136,7 +136,7 @@ namespace ring::net {
         std::unordered_map<int, std::shared_ptr<connection_details>> connections;
         std::mutex conn_mutex;
         void closeConn(int conn_id);
-        void run(bool threading = false);
+        void run();
         nlohmann::json copyover();
         std::vector<std::thread> threads;
         void copyoverRecover(nlohmann::json &json);

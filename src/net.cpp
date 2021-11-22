@@ -338,14 +338,17 @@ namespace ring::net {
     }
 
     void plain_socket::onDataReceived() {
-        auto &in_buffer = conn->buffers->in_buffer;
         auto &details = conn->details;
 
+        auto before_size = conn->buffers->in_buffer.size();
+
         if(details.clientType == TcpTelnet || details.clientType == TlsTelnet) {
-            auto msg = ring::telnet::parse_message(in_buffer);
+            auto msg = ring::telnet::parse_message(conn->buffers->in_buffer);
             if(msg.has_value()) {
                 conn->telnetProtocol->handleMessage(msg.value());
             }
+            auto after_size = conn->buffers->in_buffer.size();
+            auto after_size2 = conn->buffers->in_buffer.size();
         }
     }
 
@@ -421,7 +424,7 @@ namespace ring::net {
 
     ListenManager manager;
 
-    void ListenManager::run(bool threading) {
+    void ListenManager::run() {
         if(!on_ready_cb) {
             std::cerr << "Error! on_ready_cb not set." << std::endl;
             exit(1);
@@ -434,21 +437,17 @@ namespace ring::net {
             std::cerr << "Error! on_receive_cb not set." << std::endl;
         }
         // quick and dirty
-        if(threading) {
-            for(int i = 0; i < std::thread::hardware_concurrency() - 1; i++) {
-                std::thread t([](){executor->run();});
-                manager.threads.push_back(std::move(t));
-            }
+        for(int i = 0; i < std::max(std::thread::hardware_concurrency(), 2U) - 1; i++) {
+            std::thread t([](){executor->run();});
+            manager.threads.push_back(std::move(t));
         }
 
         executor->run();
 
-        if(threading) {
-            for(auto &t : manager.threads) {
-                t.join();
-            }
-            manager.threads.clear();
+        for(auto &t : manager.threads) {
+            t.join();
         }
+        manager.threads.clear();
     }
 
     nlohmann::json ListenManager::copyover() {
