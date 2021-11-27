@@ -133,7 +133,7 @@ namespace ring::net {
         return j;
     }
 
-    connection_details::connection_details(int con, ClientType ctype) : details(ctype) {
+    connection_details::connection_details(uint64_t con, ClientType ctype) : details(ctype) {
         conn_id = con;
         switch(ctype) {
             case TcpTelnet:
@@ -458,7 +458,7 @@ namespace ring::net {
         return j;
     }
 
-    void ListenManager::closeConn(int conn_id) {
+    void ListenManager::closeConn(uint64_t conn_id) {
         conn_mutex.lock();
         connections.erase(conn_id);
         conn_mutex.unlock();
@@ -466,7 +466,7 @@ namespace ring::net {
 
     nlohmann::json ListenManager::serialize() {
         nlohmann::json j;
-        int val = next_id;
+        uint64_t val = next_id;
         j["next_id"] = val;
         j["plainTelnetListeners"] = serializePlainTelnetListeners();
         j["connections"] = serializeConnections();

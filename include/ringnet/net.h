@@ -88,9 +88,9 @@ namespace ring::net {
     };
 
     struct connection_details {
-        connection_details(int con, ClientType ctype);
+        connection_details(uint64_t con, ClientType ctype);
         connection_details(const nlohmann::json &j);
-        int conn_id;
+        uint64_t conn_id;
         client_details details;
         std::shared_ptr<plain_socket> plainSocket;
         std::shared_ptr<socket_buffers> buffers;
@@ -131,10 +131,10 @@ namespace ring::net {
         bool listenPlainTelnet(const std::string& ip, uint16_t port);
         bool listenTLSTelnet(const std::string& ip, uint16_t port);
         bool listenWebSocket(const std::string& ip, uint16_t port);
-        std::atomic<int> next_id = 0;
-        std::unordered_map<int, std::shared_ptr<connection_details>> connections;
+        std::atomic<uint64_t> next_id = 0;
+        std::unordered_map<uint64_t, std::shared_ptr<connection_details>> connections;
         std::mutex conn_mutex;
-        void closeConn(int conn_id);
+        void closeConn(uint64_t conn_id);
         void run(int threads = 0);
         nlohmann::json copyover();
         std::vector<std::thread> threads;
