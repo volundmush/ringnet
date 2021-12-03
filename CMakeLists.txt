@@ -38,7 +38,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-fpermissive")
 
 add_library(ringnet ${RINGNET_INCLUDE} ${RINGNET_SRC})
-link_libraries(ringnet)
+link_libraries(ringnet pthread)
 
 include_directories(PUBLIC include
         ${asio_SOURCE_DIR}/asio/include
