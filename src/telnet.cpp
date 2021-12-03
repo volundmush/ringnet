@@ -21,7 +21,7 @@ namespace ring::telnet {
         msg_type = m_type;
     }
 
-    std::optional<TelnetMessage> parse_message(asio::streambuf &buf) {
+    opt_type<TelnetMessage> parse_message(asio::streambuf &buf) {
         using namespace ring::telnet::codes;
         // return early if nothing to do.
         auto available = buf.size();
@@ -30,7 +30,7 @@ namespace ring::telnet {
         // So we do have some data?
         auto box = buf.data();
         auto begin = asio::buffers_begin(box), end = asio::buffers_end(box);
-        std::optional<TelnetMessage> response;
+        opt_type<TelnetMessage> response;
         bool escaped = false, match1 = false, match2 = false;
 
         // first, we read ahead

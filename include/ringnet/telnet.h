@@ -63,7 +63,7 @@ namespace ring::telnet {
         uint8_t codes[2] = {0, 0};
     };
 
-    std::optional<TelnetMessage> parse_message(asio::streambuf &buf);
+    opt_type<TelnetMessage> parse_message(asio::streambuf &buf);
 
     struct TelnetOptionPerspective {
         bool enabled = false, negotiating = false, answered = false;
