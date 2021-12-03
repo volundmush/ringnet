@@ -557,13 +557,13 @@ namespace ring::telnet {
             }
             return;
         }
-        auto hand = handlers.at(msg.codes[1]);
+        auto &hand = handlers.at(msg.codes[1]);
         hand.receiveNegotiate(msg.codes[0]);
     }
 
     void TelnetProtocol::handleSubnegotiate(const TelnetMessage &msg) {
         if(handlers.count(msg.codes[0])) {
-            auto hand = handlers.at(msg.codes[0]);
+            auto &hand = handlers.at(msg.codes[0]);
             hand.subNegotiate(msg);
         }
     }
