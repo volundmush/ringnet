@@ -114,14 +114,16 @@ namespace ring::net {
     }
 
     void socket_buffers::write(const std::vector<uint8_t> &data) {
-        while(!out_mutex.try_lock()) {
+        std::uint_t tries = 0;
+        while(!out_mutex.try_lock() && tries++ < 15) {
             if(!ring::net::manager.running) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         };
         auto prep = out_buffer.prepare(data.size());
         memcpy(prep.data(), data.data(), data.size());
         out_buffer.commit(data.size());
-        out_mutex.unlock();
+        if(tries < 15)
+            out_mutex.unlock();
     }
 
     nlohmann::json socket_buffers::serialize() const {
