@@ -294,10 +294,13 @@ namespace ring::net {
             if(out_buffer.size()) {
                 isWriting = true;
                 auto handler = [&](std::error_code ec, std::size_t trans) {
-                    out_buffer.consume(trans);
-                    isWriting = false;
-                    if(out_buffer.size())
-                        send();
+                    if(!ec) {
+                        out_buffer.consume(trans);
+                        isWriting = false;
+                        if(out_buffer.size())
+                            send();
+                    }
+
                 };
                 auto b = boost::asio::buffer(out_buffer.data());
                 socket.async_write_some(b, handler);
