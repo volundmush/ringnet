@@ -114,7 +114,7 @@ namespace ring::net {
     }
 
     void socket_buffers::write(const std::vector<uint8_t> &data) {
-        std::uint_t tries = 0;
+        uint8_t tries = 0;
         while(!out_mutex.try_lock() && tries++ < 15) {
             if(!ring::net::manager.running) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
