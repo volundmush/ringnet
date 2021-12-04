@@ -89,6 +89,7 @@ namespace ring::net {
     struct connection_details {
         connection_details(uint64_t con, ClientType ctype);
         connection_details(const nlohmann::json &j);
+        ~connection_details();
         uint64_t conn_id;
         client_details details;
         std::shared_ptr<plain_socket> plainSocket;

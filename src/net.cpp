@@ -172,6 +172,10 @@ namespace ring::net {
         }
     }
 
+    connection_details::~connection_details() {
+        if(plainSocket) plainSocket->socket.cancel();
+    }
+
     void connection_details::onReady() {
         active = true;
         on_ready_cb(conn_id);
