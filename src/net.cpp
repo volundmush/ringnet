@@ -272,6 +272,12 @@ namespace ring::net {
         }
     }
 
+    void connection_details::setup() {
+        if(plainSocket) {
+            details.hostIp = plainSocket->socket.remote_endpoint().address().to_string();
+        }
+    }
+
     plain_socket::plain_socket() : socket(*executor) {
 
     }
@@ -362,6 +368,7 @@ namespace ring::net {
                     queued_socket->conn = new_conn;
                     new_conn->plainSocket = queued_socket;
                     queued_socket.reset();
+                    new_conn->setup();
                     manager.connections.emplace(new_conn->conn_id, new_conn);
                     new_conn->plainSocket->receive();
                     new_conn->telnetProtocol->onConnect();

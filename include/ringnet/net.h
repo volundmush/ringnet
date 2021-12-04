@@ -99,6 +99,7 @@ namespace ring::net {
         bool active = true;
         void onClose();
         void onReady();
+        void setup();
         void sendBytes(const std::vector<uint8_t> &data);
         void sendText(const std::string &txt, TextType mode = Text);
         void sendJson(const nlohmann::json& json);
