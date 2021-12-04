@@ -13,9 +13,8 @@ include(${CPM_DOWNLOAD_LOCATION})
 project(ringnet)
 
 CPMAddPackage(
-        NAME asio
-        GITHUB_REPOSITORY chriskohlhoff/asio
-        GIT_TAG asio-1-21-0
+        NAME boost
+        URL https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.7z
 )
 
 CPMAddPackage(
@@ -41,7 +40,7 @@ add_library(ringnet ${RINGNET_INCLUDE} ${RINGNET_SRC})
 link_libraries(ringnet pthread)
 
 include_directories(PUBLIC include
-        ${asio_SOURCE_DIR}/asio/include
+        ${boost_SOURCE_DIR}
         ${json_SOURCE_DIR}/single_include
         ${cppcodec_SOURCE_DIR}/cppcodec
 )

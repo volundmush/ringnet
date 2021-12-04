@@ -9,9 +9,9 @@
 
 namespace ring::net {
 
-    asio::io_context *executor = new asio::io_context;
+    boost::asio::io_context *executor = new boost::asio::io_context;
 
-    std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
+    std::function<void(uint64_t conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
 
     client_details::client_details(ClientType ctype) {
         clientType = ctype;
@@ -114,16 +114,9 @@ namespace ring::net {
     }
 
     void socket_buffers::write(const std::vector<uint8_t> &data) {
-        uint8_t tries = 0;
-        while(!out_mutex.try_lock() && tries++ < 15) {
-            if(!ring::net::manager.running) return;
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        };
         auto prep = out_buffer.prepare(data.size());
         memcpy(prep.data(), data.data(), data.size());
         out_buffer.commit(data.size());
-        if(tries < 15)
-            out_mutex.unlock();
     }
 
     nlohmann::json socket_buffers::serialize() const {
@@ -156,7 +149,7 @@ namespace ring::net {
             auto sd = j["plainSocket"];
             int prot_id = sd["protocol"];
             int socket = sd["socket"];
-            plainSocket = std::make_shared<plain_socket>(prot_id==4 ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), socket);
+            plainSocket = std::make_shared<plain_socket>(prot_id==4 ? boost::asio::ip::tcp::v4() : boost::asio::ip::tcp::v6(), socket);
             plainSocket->conn = this;
         }
         if(details.clientType == TlsTelnet) {
@@ -209,9 +202,7 @@ namespace ring::net {
     }
 
     void connection_details::queueJson(const nlohmann::json &json) {
-        in_queue_mutex.lock();
         queue_in.push_back(json);
-        in_queue_mutex.unlock();
         on_receive_cb(conn_id);
     }
 
@@ -281,31 +272,30 @@ namespace ring::net {
 
     }
 
-    plain_socket::plain_socket(asio::ip::tcp prot, int socket) : socket(*executor, prot, socket) {
+    plain_socket::plain_socket(boost::asio::ip::tcp prot, int socket) : socket(*executor, prot, socket) {
 
     }
 
     nlohmann::json plain_socket::serialize() {
         nlohmann::json j;
         j["socket"] = socket.native_handle();
-        j["protocol"] = socket.local_endpoint().protocol() == asio::ip::tcp::v4() ? 4 : 6;
+        j["protocol"] = socket.local_endpoint().protocol() == boost::asio::ip::tcp::v4() ? 4 : 6;
         return j;
     }
 
     void plain_socket::send() {
         if(!isWriting) {
+            std::vector<uint8_t> to_out;
             auto &out_buffer = conn->buffers->out_buffer;
             if(out_buffer.size()) {
                 isWriting = true;
-                conn->buffers->out_mutex.lock();
                 auto handler = [&](std::error_code ec, std::size_t trans) {
                     out_buffer.consume(trans);
-                    conn->buffers->out_mutex.unlock();
                     isWriting = false;
                     if(out_buffer.size())
                         send();
                 };
-                auto b = asio::buffer(out_buffer.data());
+                auto b = boost::asio::buffer(out_buffer.data());
                 socket.async_write_some(b, handler);
             }
         }
@@ -316,7 +306,7 @@ namespace ring::net {
             isReading = true;
             auto &in_buffer = conn->buffers->in_buffer;
             auto prep = in_buffer.prepare(1024);
-            auto handler = [&](std::error_code ec, std::size_t trans) {
+            auto handler = [&](auto ec, std::size_t trans) {
                 if(!ec) {
                     in_buffer.commit(trans);
                     onDataReceived();
@@ -324,12 +314,12 @@ namespace ring::net {
                     isReading = false;
                     receive();
                 } else {
-                    if(ec == asio::error::eof) {
+                    if(ec == boost::asio::error::eof) {
                         conn->onClose();
                     }
                 }
             };
-            socket.async_read_some(asio::buffer(prep), handler);
+            socket.async_read_some(boost::asio::buffer(prep), handler);
         }
     }
 
@@ -349,10 +339,10 @@ namespace ring::net {
         }
     }
 
-    plain_telnet_listen::plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man)
+    plain_telnet_listen::plain_telnet_listen(boost::asio::ip::tcp::endpoint endp, ListenManager &man)
     : manager(man), acceptor(*executor, endp) {}
 
-    plain_telnet_listen::plain_telnet_listen(ListenManager &man, asio::ip::tcp prot, int socket)
+    plain_telnet_listen::plain_telnet_listen(ListenManager &man, boost::asio::ip::tcp prot, int socket)
     : acceptor(*executor, prot, socket), manager(man) {}
 
     void plain_telnet_listen::listen() {
@@ -365,9 +355,7 @@ namespace ring::net {
                     queued_socket->conn = new_conn;
                     new_conn->plainSocket = queued_socket;
                     queued_socket.reset();
-                    manager.conn_mutex.lock();
                     manager.connections.emplace(new_conn->conn_id, new_conn);
-                    manager.conn_mutex.unlock();
                     new_conn->plainSocket->receive();
                     new_conn->telnetProtocol->onConnect();
                 } else {
@@ -384,9 +372,9 @@ namespace ring::net {
 
     bool ListenManager::readyTLS() {return false;};
 
-    asio::ip::address ListenManager::parse_addr(const std::string &ip) {
+    boost::asio::ip::address ListenManager::parse_addr(const std::string &ip) {
         std::error_code ec;
-        auto ip_address = asio::ip::address::from_string(ip, ec);
+        auto ip_address = boost::asio::ip::address::from_string(ip);
 
         if(ec) {
             std::cerr << "Failed to parse IP Address: " << ip << " Error code: " << ec.value() << " - " << ec.message() << std::endl;
@@ -395,12 +383,12 @@ namespace ring::net {
         return ip_address;
     }
 
-    asio::ip::tcp::endpoint ListenManager::create_endpoint(const std::string &ip, uint16_t port) {
+    boost::asio::ip::tcp::endpoint ListenManager::create_endpoint(const std::string &ip, uint16_t port) {
         if(ports.count(port)) {
             std::cerr << "Port is already in use: " << port << std::endl;
             exit(1);
         }
-        return asio::ip::tcp::endpoint(parse_addr(ip), port);
+        return boost::asio::ip::tcp::endpoint(parse_addr(ip), port);
     }
 
     bool ListenManager::listenPlainTelnet(const std::string& ip, uint16_t port) {
@@ -421,7 +409,7 @@ namespace ring::net {
 
     ListenManager manager;
 
-    void ListenManager::run(int threads) {
+    void ListenManager::run() {
         if(!on_ready_cb) {
             std::cerr << "Error! on_ready_cb not set." << std::endl;
             exit(1);
@@ -434,21 +422,7 @@ namespace ring::net {
             std::cerr << "Error! on_receive_cb not set." << std::endl;
         }
 
-        int thread_count = threads;
-        if(thread_count < 1)
-            thread_count = std::thread::hardware_concurrency();
-
-        // quick and dirty
-        for(int i = 0; i < thread_count - 1; i++) {
-            manager.threads.emplace_back([](){executor->run();});
-        }
-
         executor->run();
-
-        for(auto &t : manager.threads) {
-            t.join();
-        }
-        manager.threads.clear();
 
         delete executor;
     }
@@ -461,9 +435,7 @@ namespace ring::net {
     }
 
     void ListenManager::closeConn(uint64_t conn_id) {
-        conn_mutex.lock();
         connections.erase(conn_id);
-        conn_mutex.unlock();
     }
 
     nlohmann::json ListenManager::serialize() {
@@ -483,7 +455,7 @@ namespace ring::net {
                     {"socket", t.second->acceptor.native_handle()},
                     {"port", t.first}
             };
-            if(t.second->acceptor.local_endpoint().protocol() == asio::ip::tcp::v4()) {
+            if(t.second->acceptor.local_endpoint().protocol() == boost::asio::ip::tcp::v4()) {
                 j2["protocol_type"] = 4;
             } else {
                 j2["protocol_type"] = 6;
@@ -525,7 +497,7 @@ namespace ring::net {
         for(const auto &j2 : j) {
             int socket = j2["socket"];
             int prot = j2["protocol_type"];
-            auto p = new plain_telnet_listen(*this, prot==4 ? asio::ip::tcp::v4() : asio::ip::tcp::v6(), socket);
+            auto p = new plain_telnet_listen(*this, prot==4 ? boost::asio::ip::tcp::v4() : boost::asio::ip::tcp::v6(), socket);
             int port = j2["port"];
             ports.insert(port);
             plain_telnet_listeners.emplace(port, p);
