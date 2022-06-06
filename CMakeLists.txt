@@ -27,6 +27,7 @@ CPMAddPackage(
         NAME cppccodec
         GITHUB_REPOSITORY tplgy/cppcodec
         VERSION 0.2
+        OPTIONS "BUILD_TESTING OFF"
 )
 
 
