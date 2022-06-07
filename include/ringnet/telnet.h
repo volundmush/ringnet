@@ -6,7 +6,7 @@
 #define RINGMUD_TELNET_H
 
 #include "sysdeps.h"
-#include "asio.hpp"
+#include "boost/asio.hpp"
 #include "nlohmann/json.hpp"
 
 namespace ring::net {
@@ -63,7 +63,7 @@ namespace ring::telnet {
         uint8_t codes[2] = {0, 0};
     };
 
-    opt_type<TelnetMessage> parse_message(asio::streambuf &buf);
+    opt_type<TelnetMessage> parse_message(boost::asio::streambuf &buf);
 
     struct TelnetOptionPerspective {
         bool enabled = false, negotiating = false, answered = false;
@@ -87,7 +87,7 @@ namespace ring::telnet {
         TelnetProtocol &protocol;
         int mtts_count = 0;
         void subMTTS(const TelnetMessage &msg);
-        void subMTTS_0(const std::string mtts);
+        void subMTTS_0(const std::string& mtts);
         void subMTTS_1(const std::string mtts);
         void subMTTS_2(const std::string mtts);
     };
@@ -115,7 +115,7 @@ namespace ring::telnet {
     private:
         std::string app_data;
         std::unordered_map<uint8_t, TelnetOption> handlers;
-        asio::steady_timer start_timer;
+        boost::asio::steady_timer start_timer;
     };
 
 

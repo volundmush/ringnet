@@ -7,16 +7,16 @@
 
 #include "sysdeps.h"
 
-#include "asio.hpp"
+#include "boost/asio.hpp"
 #include "nlohmann/json.hpp"
 #include "telnet.h"
 
 
 namespace ring::net {
 
-    extern asio::io_context *executor;
+    extern boost::asio::io_context *executor;
 
-    extern std::function<void(int conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
+    extern std::function<void(uint64_t conn_id)> on_ready_cb, on_close_cb, on_receive_cb;
 
     enum ClientType : uint8_t {
         TcpTelnet = 0,
@@ -65,7 +65,7 @@ namespace ring::net {
     };
 
     struct socket_buffers {
-        asio::streambuf in_buffer, out_buffer;
+        boost::asio::streambuf in_buffer, out_buffer;
         std::mutex out_mutex;
         void write(const std::vector<uint8_t> &data);
         nlohmann::json serialize() const;
@@ -75,12 +75,12 @@ namespace ring::net {
 
     struct plain_socket {
         explicit plain_socket();
-        plain_socket(asio::ip::tcp prot, int socket);
-        asio::ip::tcp::socket socket;
+        plain_socket(boost::asio::ip::tcp prot, int socket);
+        boost::asio::ip::tcp::socket socket;
         bool isWriting = false;
         bool isReading = false;
         connection_details *conn = nullptr;
-
+        void sendBytes(const std::vector<uint8_t> &data);
         void send();
         void receive();
         void onDataReceived();
@@ -90,6 +90,7 @@ namespace ring::net {
     struct connection_details {
         connection_details(uint64_t con, ClientType ctype);
         connection_details(const nlohmann::json &j);
+        ~connection_details();
         uint64_t conn_id;
         client_details details;
         std::shared_ptr<plain_socket> plainSocket;
@@ -100,6 +101,7 @@ namespace ring::net {
         bool active = true;
         void onClose();
         void onReady();
+        void setup();
         void sendText(const std::string &txt, TextType mode = Text);
         void sendJson(const nlohmann::json& json);
         void sendMSSP(const std::vector<std::pair<std::string, std::string>>& pairs);
@@ -113,9 +115,9 @@ namespace ring::net {
     };
 
     struct plain_telnet_listen {
-        plain_telnet_listen(asio::ip::tcp::endpoint endp, ListenManager &man);
-        plain_telnet_listen(ListenManager &man, asio::ip::tcp prot, int socket);
-        asio::ip::tcp::acceptor acceptor;
+        plain_telnet_listen(boost::asio::ip::tcp::endpoint endp, ListenManager &man);
+        plain_telnet_listen(ListenManager &man, boost::asio::ip::tcp prot, int socket);
+        boost::asio::ip::tcp::acceptor acceptor;
         std::shared_ptr<plain_socket> queued_socket;
         ListenManager &manager;
 
@@ -145,8 +147,8 @@ namespace ring::net {
     protected:
 
         std::unordered_set<uint16_t> ports;
-        asio::ip::address parse_addr(const std::string& ip);
-        asio::ip::tcp::endpoint create_endpoint(const std::string& ip, uint16_t port);
+        boost::asio::ip::address parse_addr(const std::string& ip);
+        boost::asio::ip::tcp::endpoint create_endpoint(const std::string& ip, uint16_t port);
         nlohmann::json serializePlainTelnetListeners();
         nlohmann::json serializeConnections();
         void loadPlainTelnetListeners(nlohmann::json &j);

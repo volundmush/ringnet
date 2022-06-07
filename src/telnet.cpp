@@ -6,6 +6,7 @@
 #include <chrono>
 #include "ringnet/telnet.h"
 #include "ringnet/net.h"
+#include "boost/algorithm/string.hpp"
 
 namespace ring::telnet {
     namespace codes {
@@ -21,7 +22,7 @@ namespace ring::telnet {
         msg_type = m_type;
     }
 
-    opt_type<TelnetMessage> parse_message(asio::streambuf &buf) {
+    opt_type<TelnetMessage> parse_message(boost::asio::streambuf &buf) {
         using namespace ring::telnet::codes;
         // return early if nothing to do.
         auto available = buf.size();
@@ -29,7 +30,7 @@ namespace ring::telnet {
 
         // So we do have some data?
         auto box = buf.data();
-        auto begin = asio::buffers_begin(box), end = asio::buffers_end(box);
+        auto begin = boost::asio::buffers_begin(box), end = boost::asio::buffers_end(box);
         opt_type<TelnetMessage> response;
         bool escaped = false, match1 = false, match2 = false;
 
@@ -282,12 +283,7 @@ namespace ring::telnet {
         if(msg.data[0] != 0) return; // this is invalid MTTS.
         if(msg.data.size() < 2) return; // we need at least some decent amount of data to be useful.
 
-        std::string mtts;
-        auto begin = msg.data.begin();
-        begin++;
-        // fill that string up and uppercase it.
-        std::copy(begin, msg.data.end(), std::back_inserter(mtts));
-        std::transform(mtts.begin(), mtts.end(), mtts.begin(), ::toupper);
+        std::string mtts = boost::algorithm::to_upper_copy(std::string(msg.data.begin(), msg.data.end()).substr(1));
 
         if(mtts == mtts_last) // there is no more data to be gleaned from asking...
             return;
@@ -312,7 +308,7 @@ namespace ring::telnet {
 
     }
 
-    void TelnetOption::subMTTS_0(const std::string mtts) {
+    void TelnetOption::subMTTS_0(const std::string& mtts) {
         auto first_space = std::find(mtts.begin(), mtts.end(), " ");
         if(first_space != mtts.end()) {
             protocol.conn.details.clientName.clear();
@@ -476,7 +472,7 @@ namespace ring::telnet {
     }
 
 
-    TelnetProtocol::TelnetProtocol(net::connection_details &det) : conn(det), start_timer(*net::executor, asio::chrono::milliseconds(300)) {
+    TelnetProtocol::TelnetProtocol(net::connection_details &det) : conn(det), start_timer(*net::executor, boost::asio::chrono::milliseconds(300)) {
         using namespace codes;
 
         for(const auto &code : {MSSP, SGA, MSDP, GMCP, NAWS, MTTS}) {
