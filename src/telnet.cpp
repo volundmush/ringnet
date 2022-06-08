@@ -668,6 +668,21 @@ namespace ring::telnet {
 
     TcpMudTelnetConnection::TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con, nlohmann::json &j,
                                                    boost::asio::ip::tcp prot, int socket) : MudTelnetConnection(conn_id, con, j), _socket(con, prot, socket) {
+        MudTelnetConnection::loadJson(j);
+        std::string in_data = j["in_buffer"], out_data = j["out_buffer"];
+        if(!in_data.empty()) {
+            std::vector<uint8_t> in_d = base64::decode(in_data);
+            auto prep = in_buffer.prepare(in_d.size());
+            memcpy(prep.data(), in_d.data(), in_d.size());
+            in_buffer.commit(in_d.size());
+        }
+
+        if(!out_data.empty()) {
+            std::vector<uint8_t> out_d = base64::decode(out_data);
+            auto prep = out_buffer.prepare(out_d.size());
+            memcpy(prep.data(), out_d.data(), out_d.size());
+            out_buffer.commit(out_d.size());
+        }
     }
 
     nlohmann::json TcpMudTelnetConnection::serialize() {
