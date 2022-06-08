@@ -485,6 +485,7 @@ namespace ring::telnet {
                 sendNegotiate(DO, h.first);
             }
         }
+        start_timer.expires_after(boost::asio::chrono::milliseconds(300));
         start_timer.async_wait([&](auto ec){if(!ec) ready();});
     }
 

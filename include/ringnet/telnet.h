@@ -116,7 +116,7 @@ class MudTelnetConnection : public ring::net::MudConnection {
         std::mutex out_mutex, buf_mutex;
         std::string app_data;
         std::unordered_map<uint8_t, TelnetOption> handlers;
-        boost::asio::steady_timer start_timer;
+        boost::asio::high_resolution_timer start_timer;
         boost::asio::streambuf in_buffer, out_buffer, ex_buffer;
         nlohmann::json serializeHandlers();
     };
