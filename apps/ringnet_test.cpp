@@ -53,13 +53,12 @@ void check_status(boost::system::error_code ec, boost::asio::steady_timer &timer
             conns.erase(m.conn_id);
         }
     }
-        nlohmann::json j;
+        ring::net::GameMsg g;
         for(auto &c : conns) {
             if(auto con = c.second.lock()) {
-                if(con->game_messages.pop(j)) {
+                if(con->game_messages.pop(g)) {
                     std::cout << "Message from " << con->conn_id << std::endl;
-                    std::cout << j.dump(4) << std::endl;
-                    con->sendLine("Echoing: " + j.dump(4));
+                    con->sendLine("Echoing: " + g.command);
                 };
             }
         }

@@ -517,14 +517,13 @@ namespace ring::telnet {
     }
 
     void MudTelnetConnection::handleAppData(const TelnetMessage &msg) {
-        nlohmann::json j;
+        net::GameMsg g;
         for(const auto& c : msg.data) {
             switch(c) {
                 case '\n':
-                    j["data"]["command"] = app_data;
+                    g.command = app_data;
                     app_data.clear();
-                    game_messages.push(j);
-                    j.clear();
+                    game_messages.push(g);
                     break;
                 case '\r':
                     // we just ignore these.

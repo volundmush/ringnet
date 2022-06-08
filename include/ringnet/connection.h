@@ -67,6 +67,12 @@ namespace ring::net {
         ConnectionEvent event;
     };
 
+    struct GameMsg {
+        std::string command;
+        std::string gmcp;
+        bool mssp;
+    };
+
     class MudConnection {
     public:
         MudConnection(std::string &conn_id, boost::asio::io_context &con);
@@ -83,7 +89,7 @@ namespace ring::net {
         std::string conn_id;
         client_details details;
         bool active = true;
-        boost::lockfree::spsc_queue<nlohmann::json> game_messages;
+        boost::lockfree::spsc_queue<GameMsg> game_messages;
     protected:
         boost::asio::io_context::strand conn_strand;
         virtual void loadJson(nlohmann::json &j);
