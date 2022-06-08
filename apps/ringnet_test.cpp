@@ -36,31 +36,30 @@ std::unordered_map<std::string, std::weak_ptr<ring::net::MudConnection>> conns;
 void check_status(boost::system::error_code ec, boost::asio::steady_timer &timer) {
     if(ec) std::cout << "Got an error: " << ec << std::endl;
 
-    ring::net::ConnectionMsg *m;
+    ring::net::ConnectionMsg m;
     if(ring::net::manager.events.pop(m)) {
-        std::cout << "Got an Event: " << m->conn_id << " - " << m->event << std::endl;
+        std::cout << "Got an Event: " << m.conn_id << " - " << m.event << std::endl;
 
-        if (m->event == ring::net::CONNECTED) {
+        if (m.event == ring::net::CONNECTED) {
             ring::net::manager.conn_mutex.lock();
-            auto find = ring::net::manager.connections.find(m->conn_id);
-            if (find != ring::net::manager.connections.end()) conns.emplace(m->conn_id, find->second);
+            auto find = ring::net::manager.connections.find(m.conn_id);
+            if (find != ring::net::manager.connections.end()) conns.emplace(m.conn_id, find->second);
             ring::net::manager.conn_mutex.unlock();
         }
-        if (m->event == ring::net::DISCONNECTED) {
-            conns.erase(m->conn_id);
+        if (m.event == ring::net::DISCONNECTED) {
+            conns.erase(m.conn_id);
         }
-        if (m->event == ring::net::TIMEOUT) {
-            conns.erase(m->conn_id);
+        if (m.event == ring::net::TIMEOUT) {
+            conns.erase(m.conn_id);
         }
     }
-        nlohmann::json *j;
+        nlohmann::json j;
         for(auto &c : conns) {
             if(auto con = c.second.lock()) {
                 if(con->game_messages.pop(j)) {
                     std::cout << "Message from " << con->conn_id << std::endl;
-                    std::cout << j->dump(4) << std::endl;
-                    con->sendLine("Echoing: " + j->dump(4));
-                    delete j;
+                    std::cout << j.dump(4) << std::endl;
+                    con->sendLine("Echoing: " + j.dump(4));
                 };
             }
         }

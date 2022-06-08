@@ -49,7 +49,7 @@ namespace ring::net {
         nlohmann::json serialize();
         bool running = true;
         boost::asio::io_context executor;
-        boost::lockfree::spsc_queue<ConnectionMsg*> events;
+        boost::lockfree::spsc_queue<ConnectionMsg> events;
         std::unordered_map<uint16_t, std::unique_ptr<plain_telnet_listen>> plain_telnet_listeners;
     protected:
 

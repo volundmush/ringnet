@@ -493,9 +493,9 @@ namespace ring::telnet {
     }
 
     void MudTelnetConnection::ready() {
-        auto m = new net::ConnectionMsg();
-        m->conn_id = conn_id;
-        m->event = net::CONNECTED;
+        net::ConnectionMsg m;
+        m.conn_id = conn_id;
+        m.event = net::CONNECTED;
         net::manager.events.push(m);
     }
 
@@ -517,14 +517,14 @@ namespace ring::telnet {
     }
 
     void MudTelnetConnection::handleAppData(const TelnetMessage &msg) {
-        nlohmann::json *j;
+        nlohmann::json j;
         for(const auto& c : msg.data) {
             switch(c) {
                 case '\n':
-                    j = new nlohmann::json();
-                    (*j)["data"]["command"] = app_data;
+                    j["data"]["command"] = app_data;
                     app_data.clear();
                     game_messages.push(j);
+                    j.clear();
                     break;
                 case '\r':
                     // we just ignore these.

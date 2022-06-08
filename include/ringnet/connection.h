@@ -83,7 +83,7 @@ namespace ring::net {
         std::string conn_id;
         client_details details;
         bool active = true;
-        boost::lockfree::spsc_queue<nlohmann::json*> game_messages;
+        boost::lockfree::spsc_queue<nlohmann::json> game_messages;
     protected:
         boost::asio::io_context::strand conn_strand;
         virtual void loadJson(nlohmann::json &j);
