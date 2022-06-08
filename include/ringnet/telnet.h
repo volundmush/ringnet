@@ -130,6 +130,7 @@ class MudTelnetConnection : public ring::net::MudConnection {
         virtual void start() override;
         virtual void sendBytes(const std::vector<uint8_t> &data) override;
         virtual void resume() override;
+        virtual void onClose() override;
     protected:
         bool isWriting = false;
         void read();

@@ -662,8 +662,6 @@ namespace ring::telnet {
 
     }
 
-    void MudTelnetConnection::onClose() {}
-
     TcpMudTelnetConnection::TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con) : MudTelnetConnection(conn_id, con), _socket(con) {}
 
     TcpMudTelnetConnection::TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con, nlohmann::json &j,
@@ -719,7 +717,11 @@ namespace ring::telnet {
 
     void TcpMudTelnetConnection::do_read(boost::system::error_code ec, std::size_t trans) {
         if(ec) {
-            // deal with this later.
+            net::ConnectionMsg m;
+            m.conn_id = conn_id;
+            m.event = net::DISCONNECTED;
+            net::manager.events.push(m);
+            _socket.cancel();
         } else {
             // all is well, we got some data.
             in_buffer.commit(trans);
@@ -737,11 +739,13 @@ namespace ring::telnet {
 
 
     void TcpMudTelnetConnection::do_write(boost::system::error_code ec, std::size_t trans) {
+        if(trans) out_buffer.consume(trans);
+
         if(ec) {
             // deal with this later.
             }
         else {
-            out_buffer.consume(trans);
+
             if(buf_mutex.try_lock()) {
                 if(ex_buffer.size()) {
                     auto prep = out_buffer.prepare(ex_buffer.size());
@@ -790,5 +794,9 @@ namespace ring::telnet {
                 conn_strand.post([this]{ real_write(); });
             }
         }
+    }
+
+    void TcpMudTelnetConnection::onClose() {
+        _socket.cancel();
     }
 }
