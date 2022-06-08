@@ -129,6 +129,7 @@ class MudTelnetConnection : public ring::net::MudConnection {
         virtual nlohmann::json serialize() override;
         virtual void start() override;
         virtual void sendBytes(const std::vector<uint8_t> &data) override;
+        virtual void resume() override;
     protected:
         bool isWriting = false;
         void read();

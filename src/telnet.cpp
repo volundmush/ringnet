@@ -686,6 +686,11 @@ namespace ring::telnet {
         conn_strand.post([this] { write(); });
     }
 
+    void TcpMudTelnetConnection::resume() {
+        conn_strand.post([this] { read(); });
+        conn_strand.post([this] { write(); });
+    }
+
     void TcpMudTelnetConnection::do_read(boost::system::error_code ec, std::size_t trans) {
         if(ec) {
             // deal with this later.
