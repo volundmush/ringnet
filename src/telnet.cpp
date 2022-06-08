@@ -463,7 +463,7 @@ namespace ring::telnet {
 
 
     MudTelnetConnection::MudTelnetConnection(std::string &conn_id, boost::asio::io_context &con) : ring::net::MudConnection(conn_id, con),
-    start_timer(con, boost::asio::chrono::milliseconds(300)) {
+    start_timer(con, boost::asio::chrono::milliseconds(1000)) {
         using namespace codes;
 
         for(const auto &code : {MSSP, SGA, MSDP, GMCP, NAWS, MTTS}) {
