@@ -621,7 +621,7 @@ namespace ring::telnet {
     }
 
     nlohmann::json MudTelnetConnection::serialize() {
-        nlohmann::json j;
+        auto j = MudConnection::serialize();
         j["app_data"] = app_data;
         j["handlers"] = serializeHandlers();
         return j;

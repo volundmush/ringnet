@@ -12,16 +12,6 @@ bool copyover = false;
 std::filesystem::path cpath("copyover.json");
 
 
-void copyover_cb() {
-    auto j = ring::net::manager.copyover();
-    std::cout << "initializing copyover" << std::endl;
-    std::cout << j << std::endl;
-    std::ofstream of(cpath.string());
-    of << j << std::endl;
-    of.close();
-}
-
-
 void copyover_recover() {
     std::cout << "DID IT WORK?" << std::endl;
     for(const auto &l : ring::net::manager.plain_telnet_listeners) {
@@ -31,7 +21,13 @@ void copyover_recover() {
 
 std::unordered_map<std::string, std::weak_ptr<ring::net::MudConnection>> conns;
 
-
+void test_copyover() {
+    std::ofstream c(cpath);
+    c << ring::net::manager.copyover().dump(4) << std::endl;
+    c.close();
+    std::cout << "Executing a test copyover!" << std::endl;
+    copyover = true;
+}
 
 void check_status(boost::system::error_code ec, boost::asio::steady_timer &timer) {
     if(ec) std::cout << "Got an error: " << ec << std::endl;
@@ -59,6 +55,7 @@ void check_status(boost::system::error_code ec, boost::asio::steady_timer &timer
                 if(con->game_messages.pop(g)) {
                     std::cout << "Message from " << con->conn_id << std::endl;
                     con->sendLine("Echoing: " + g.command);
+                    if(g.command == "copyover") test_copyover();
                 };
             }
         }
@@ -94,6 +91,7 @@ int main(int argc, char **argv) {
     if(copyover) {
         std::cout << "Attempting copyover!" << std::endl;
         execl("./ringnet_test", "ringnet_test", nullptr);
+        std::cout << "You shouldn't see this!" << std::endl;
     } else {
         std::cout << "okay we done!" << std::endl;
     }
