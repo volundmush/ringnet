@@ -103,7 +103,6 @@ class MudTelnetConnection : public ring::net::MudConnection {
         void sendSub(const uint8_t op, const std::vector<uint8_t>& data);
         void sendNegotiate(uint8_t command, const uint8_t option);
         virtual void resume();
-        virtual void onClose();
     protected:
         void handleMessage(const TelnetMessage &msg);
         void handleAppData(const TelnetMessage &msg);
