@@ -205,6 +205,7 @@ namespace ring::net {
         boost::asio::ip::tcp p = prot ? boost::asio::ip::tcp::v4() : boost::asio::ip::tcp::v6();
         int socket = j["socket"];
         auto c = new telnet::TcpMudTelnetConnection(conn_id, executor, j, p, socket);
+        connections.emplace(conn_id, c);
     }
 
     void ListenManager::loadTlsTelnet(nlohmann::json &j) {
