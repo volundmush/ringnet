@@ -11,13 +11,6 @@ bool copyover = false;
 
 std::filesystem::path cpath("copyover.json");
 
-void announce_ready(int conn_id) {
-    std::cout << "Connection " << conn_id << " ready." << std::endl;
-}
-
-void close_cb(int conn_id) {
-    std::cout << "Connection " << conn_id << " closed." << std::endl;
-}
 
 void copyover_cb() {
     auto j = ring::net::manager.copyover();
@@ -28,18 +21,6 @@ void copyover_cb() {
     of.close();
 }
 
-void receive_cb(int conn_id) {
-    auto conn = ring::net::manager.connections.at(conn_id);
-    auto data = conn->queue_in.front();
-    std::cout << data << std::endl;
-    std::string txt = data["data"]["text"];
-    conn->queue_in.pop_front();
-    if(txt == "copyover") {
-        std::cout << "Running a copyover!" << std::endl;
-        copyover = true;
-        copyover_cb();
-    }
-}
 
 void copyover_recover() {
     std::cout << "DID IT WORK?" << std::endl;
@@ -48,10 +29,45 @@ void copyover_recover() {
     }
 }
 
+std::unordered_map<std::string, std::weak_ptr<ring::net::MudConnection>> conns;
+
+
+
+void check_status(boost::system::error_code ec, boost::asio::steady_timer &timer) {
+    if(ec) std::cout << "Got an error: " << ec << std::endl;
+
+    ring::net::ConnectionMsg *m;
+    if(ring::net::manager.events.pop(m)) {
+        std::cout << "Got an Event: " << m->conn_id << " - " << m->event << std::endl;
+
+        if (m->event == ring::net::CONNECTED) {
+            ring::net::manager.conn_mutex.lock();
+            auto find = ring::net::manager.connections.find(m->conn_id);
+            if (find != ring::net::manager.connections.end()) conns.emplace(m->conn_id, find->second);
+            ring::net::manager.conn_mutex.unlock();
+        }
+        if (m->event == ring::net::DISCONNECTED) {
+            conns.erase(m->conn_id);
+        }
+        if (m->event == ring::net::TIMEOUT) {
+            conns.erase(m->conn_id);
+        }
+    }
+        nlohmann::json *j;
+        for(auto &c : conns) {
+            if(auto con = c.second.lock()) {
+                if(con->game_messages.pop(j)) {
+                    std::cout << "Message from " << con->conn_id << std::endl;
+                    std::cout << j->dump(4) << std::endl;
+                    con->sendLine("Echoing: " + j->dump(4));
+                    delete j;
+                };
+            }
+        }
+    timer.async_wait([&](auto ec) {check_status(ec, timer); });
+}
+
 int main(int argc, char **argv) {
-    ring::net::on_ready_cb = announce_ready;
-    ring::net::on_close_cb = close_cb;
-    ring::net::on_receive_cb = receive_cb;
 
     bool copyover_recovered = false;
 
@@ -73,7 +89,8 @@ int main(int argc, char **argv) {
         remove(cpath.string().c_str());
         copyover_recover();
     }
-
+    boost::asio::steady_timer start_timer(ring::net::manager.executor, boost::asio::chrono::milliseconds(300));
+    start_timer.async_wait([&](auto ec) {check_status(ec, start_timer); });
     ring::net::manager.run();
 
     if(copyover) {

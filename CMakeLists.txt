@@ -30,6 +30,11 @@ CPMAddPackage(
         OPTIONS "BUILD_TESTING OFF"
 )
 
+set(MAIN_PROJECT OFF)
+if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set(MAIN_PROJECT ON)
+endif()
+
 
 file(GLOB RINGNET_INCLUDE include/ringnet/*.h)
 file(GLOB RINGNET_SRC src/*.cpp)
@@ -46,4 +51,6 @@ include_directories(PUBLIC include
         ${cppcodec_SOURCE_DIR}/cppcodec
 )
 
+if(${MAIN_PROJECT})
 add_executable(ringnet_test apps/ringnet_test.cpp)
+endif()

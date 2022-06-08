@@ -5,13 +5,7 @@
 #ifndef RINGMUD_TELNET_H
 #define RINGMUD_TELNET_H
 
-#include "sysdeps.h"
-#include "boost/asio.hpp"
-#include "nlohmann/json.hpp"
-
-namespace ring::net {
-    struct connection_details;
-}
+#include "connection.h"
 
 namespace ring::telnet {
 
@@ -46,7 +40,7 @@ namespace ring::telnet {
         extern const uint8_t MTTS;
     }
 
-    class TelnetProtocol;
+    class MudTelnetConnection;
     class TelnetOption;
 
     enum TelnetMsgType : uint8_t {
@@ -71,7 +65,7 @@ namespace ring::telnet {
 
     class TelnetOption {
     public:
-        explicit TelnetOption(TelnetProtocol &prot, uint8_t code);
+        TelnetOption(MudTelnetConnection *prot, uint8_t code);
         uint8_t opCode() const;
         bool startWill() const, startDo() const, supportLocal() const, supportRemote() const;
         void enableLocal(), enableRemote(), disableLocal(), disableRemote();
@@ -84,40 +78,65 @@ namespace ring::telnet {
         nlohmann::json serialize() const;
         std::string mtts_last;
     protected:
-        TelnetProtocol &protocol;
+        MudTelnetConnection *conn;
         int mtts_count = 0;
         void subMTTS(const TelnetMessage &msg);
-        void subMTTS_0(const std::string mtts);
-        void subMTTS_1(const std::string mtts);
+        void subMTTS_0(const std::string& mtts);
+        void subMTTS_1(const std::string& mtts);
         void subMTTS_2(const std::string mtts);
     };
 
-    class TelnetProtocol {
+
+class MudTelnetConnection : public ring::net::MudConnection {
     public:
-        explicit TelnetProtocol(net::connection_details &det);
-        TelnetProtocol(net::connection_details &det, nlohmann::json &j);
+        MudTelnetConnection(std::string &conn_id, boost::asio::io_context &con);
+        MudTelnetConnection(std::string &conn_id, boost::asio::io_context &con, nlohmann::json &j);
+        virtual void start() override;
+        virtual void sendBytes(const std::vector<uint8_t>& data) = 0;
+        virtual void sendJson(const nlohmann::json &j) override;
+        virtual void sendPrompt(const std::string &txt) override;
+        virtual void sendLine(const std::string &txt) override;
+        virtual void sendText(const std::string &txt, net::TextType mode) override;
+        virtual void sendMSSP(const std::vector<std::tuple<std::string, std::string>> &data) override;
+        virtual nlohmann::json serialize() override;
+        virtual void loadJson(nlohmann::json &j) override;
+        void sendSub(const uint8_t op, const std::vector<uint8_t>& data);
+        void sendNegotiate(uint8_t command, const uint8_t option);
+        virtual void resume();
+        virtual void onClose();
+    protected:
         void handleMessage(const TelnetMessage &msg);
         void handleAppData(const TelnetMessage &msg);
         void handleCommand(const TelnetMessage &msg);
         void handleNegotiate(const TelnetMessage &msg);
         void handleSubnegotiate(const TelnetMessage &msg);
-        void sendNegotiate(uint8_t command, const uint8_t option);
-        void sendSub(const uint8_t op, const std::vector<uint8_t>& data);
-        void sendBytes(const std::vector<uint8_t>& data);
-        void sendText(const std::string& txt);
-        void sendLine(const std::string& txt);
-        void sendPrompt(const std::string& prompt);
-        void sendMSSP(std::map<std::string, std::string>& data);
-        void start(), onConnect();
-        net::connection_details &conn;
-        nlohmann::json serialize();
-        nlohmann::json serializeHandlers();
-    private:
+        void onDataReceived();
+        void onConnect();
+        void ready();
+        std::mutex out_mutex, buf_mutex;
         std::string app_data;
         std::unordered_map<uint8_t, TelnetOption> handlers;
         boost::asio::steady_timer start_timer;
+        boost::asio::streambuf in_buffer, out_buffer, ex_buffer;
+        nlohmann::json serializeHandlers();
     };
 
+    class TcpMudTelnetConnection : public MudTelnetConnection {
+    public:
+        TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con);
+        TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con, nlohmann::json &j, boost::asio::ip::tcp prot, int socket);
+        boost::asio::ip::tcp::socket _socket;
+        virtual nlohmann::json serialize() override;
+        virtual void start() override;
+        virtual void sendBytes(const std::vector<uint8_t> &data) override;
+    protected:
+        bool isWriting = false;
+        void read();
+        void write();
+        void do_read(boost::system::error_code ec, std::size_t trans);
+        void do_write(boost::system::error_code ec, std::size_t trans);
+        void real_write();
+    };
 
 }
 

@@ -7,6 +7,8 @@
 #include "ringnet/telnet.h"
 #include "ringnet/net.h"
 #include "boost/algorithm/string.hpp"
+#include "base64_default_rfc4648.hpp"
+
 
 namespace ring::telnet {
     namespace codes {
@@ -115,7 +117,7 @@ namespace ring::telnet {
         }
     }
 
-    TelnetOption::TelnetOption(TelnetProtocol &prot, uint8_t code) : protocol(prot) {
+    TelnetOption::TelnetOption(MudTelnetConnection *prot, uint8_t code) : conn(prot) {
         this->code = code;
     }
 
@@ -183,8 +185,8 @@ namespace ring::telnet {
         using namespace codes;
         switch(code) {
             case MTTS:
-                protocol.conn.details.mtts = true;
-                protocol.sendSub(code, std::vector<uint8_t>({1}));
+                conn->details.mtts = true;
+                conn->sendSub(code, std::vector<uint8_t>({1}));
                 break;
         }
     }
@@ -213,14 +215,14 @@ namespace ring::telnet {
                         }
                     } else {
                         remote.enabled = true;
-                        protocol.sendNegotiate(DO, opCode());
+                        conn->sendNegotiate(DO, opCode());
                         enableRemote();
                         if(!remote.answered) {
                             remote.answered = true;
                         }
                     }
                 } else {
-                    protocol.sendNegotiate(DONT, opCode());
+                    conn->sendNegotiate(DONT, opCode());
                 }
                 break;
             case DO:
@@ -236,14 +238,14 @@ namespace ring::telnet {
                         }
                     } else {
                         local.enabled = true;
-                        protocol.sendNegotiate(WILL, opCode());
+                        conn->sendNegotiate(WILL, opCode());
                         enableLocal();
                         if(!local.answered) {
                             local.answered = true;
                         }
                     }
                 } else {
-                    protocol.sendNegotiate(WONT, opCode());
+                    conn->sendNegotiate(WONT, opCode());
                 }
                 break;
             case WONT:
@@ -304,91 +306,81 @@ namespace ring::telnet {
         // cache the results and request more info.
         mtts_last = mtts;
         if(mtts_count >= 2) return; // there is no more info to request.
-        protocol.sendSub(code, std::vector<uint8_t>({1}));
+        conn->sendSub(code, std::vector<uint8_t>({1}));
 
     }
 
-    void TelnetOption::subMTTS_0(const std::string mtts) {
-        auto first_space = std::find(mtts.begin(), mtts.end(), " ");
-        if(first_space != mtts.end()) {
-            protocol.conn.details.clientName.clear();
-            std::copy(mtts.begin(), first_space-1, std::back_inserter(protocol.conn.details.clientName));
-
-            protocol.conn.details.clientVersion.clear();
-            std::copy(first_space+1, mtts.end(), std::back_inserter(protocol.conn.details.clientVersion));
-        } else {
-            protocol.conn.details.clientName = mtts;
+    void TelnetOption::subMTTS_0(const std::string& mtts) {
+        std::vector<std::string> namecheck;
+        auto to_check = boost::algorithm::to_upper_copy(mtts);
+        boost::algorithm::split(namecheck, to_check, boost::algorithm::is_space());
+        switch(namecheck.size()) {
+            case 2:
+                conn->details.clientVersion = namecheck[1];
+            case 1:
+                conn->details.clientName = namecheck[0];
+                break;
         }
 
-        auto &details = protocol.conn.details;
+        auto &details = conn->details;
         auto &name = details.clientName;
         auto &version = details.clientVersion;
 
         if((name == "ATLANTIS") || (name == "CMUD") || (name == "KILDCLIENT") || (name == "MUDLET") ||
             (name == "PUTTY") || (name == "BEIP") || (name == "POTATO") || (name == "TINYFUGUE") || (name == "MUSHCLIENT")) {
-            details.colorType = ring::net::XtermColor;
+            details.colorType = std::max(details.colorType, ring::net::XtermColor);
         }
 
         // all clients that support MTTS probably support ANSI...
-        if(!details.colorType) {
-            details.colorType = ring::net::StandardColor;
-        }
+        details.colorType = std::max(details.colorType, ring::net::StandardColor);
     }
 
-    void TelnetOption::subMTTS_1(const std::string mtts) {
-        // the second MTTS negotiation gives the terminal type.
-        auto sep = std::find(mtts.begin(), mtts.end(), "-");
-        std::string termtype, extra;
+    void TelnetOption::subMTTS_1(const std::string& mtts) {
 
-        if(sep != mtts.end()) {
-            std::copy(mtts.begin(), sep-1, std::back_inserter(termtype));
-            std::copy(sep+1, mtts.end(), std::back_inserter(extra));
-        } else {
-            termtype = mtts;
-        }
+        std::vector<std::string> splitcheck;
+        auto to_check = boost::algorithm::to_upper_copy(mtts);
+        boost::algorithm::split(splitcheck, to_check, boost::algorithm::is_any_of("-"));
 
-        auto &details = protocol.conn.details;
+        auto &details = conn->details;
 
-        if(termtype == "ANSI") {
-            if(!details.colorType) {
-                details.colorType = ring::net::StandardColor;
-            }
-        } else if (termtype == "VT100") {
-            if(!details.colorType) {
-                details.colorType = ring::net::StandardColor;
-            }
-            details.vt100 = true;
-        } else if(termtype == "XTERM") {
-            details.colorType = ring::net::XtermColor;
-            details.vt100 = true;
-        }
 
-        if(extra == "256COLOR") {
-            details.colorType = ring::net::XtermColor;
-        } else if (extra == "TRUECOLOR") {
-            details.colorType = ring::net::TrueColor;
+        switch(splitcheck.size()) {
+            case 2:
+                if(splitcheck[1] == "256COLOR") {
+                    details.colorType = std::max(details.colorType, ring::net::XtermColor);
+                } else if (splitcheck[1] == "TRUECOLOR") {
+                    details.colorType = std::max(details.colorType, ring::net::TrueColor);
+                }
+            case 1:
+                if(splitcheck[0] == "ANSI") {
+                    details.colorType = std::max(details.colorType, ring::net::StandardColor);
+                } else if (splitcheck[0] == "VT100") {
+                    details.colorType = std::max(details.colorType, ring::net::StandardColor);
+                    details.vt100 = true;
+                } else if(splitcheck[0] == "XTERM") {
+                    details.colorType = std::max(details.colorType, ring::net::XtermColor);
+                    details.vt100 = true;
+                }
+                break;
         }
     }
 
     void TelnetOption::subMTTS_2(const std::string mtts) {
-        auto sep = std::find(mtts.begin(), mtts.end(), " ");
-        if(sep == mtts.end()) return;
+        std::vector<std::string> splitcheck;
+        auto to_check = boost::algorithm::to_upper_copy(mtts);
+        boost::algorithm::split(splitcheck, to_check, boost::algorithm::is_space());
 
-        std::string mt, val;
-        std::copy(mtts.begin(), sep-1, std::back_inserter(mt));
-        std::copy(sep+1, mtts.end(), std::back_inserter(val));
+        if(splitcheck.size() < 2) return;
 
-        if(mt != "MTTS") return;
+        if(splitcheck[0] != "MTTS") return;
 
-        int v = atoi(val.c_str());
+        int v = atoi(splitcheck[1].c_str());
 
-        auto &details = protocol.conn.details;
+        auto &details = conn->details;
 
         // ANSI
         if(v & 1) {
-            if(!details.colorType) {
-                details.colorType = ring::net::StandardColor;
-            }
+            details.colorType = std::max(details.colorType, ring::net::StandardColor);
         }
 
         // VT100
@@ -403,9 +395,7 @@ namespace ring::telnet {
 
         // XTERM256 colors
         if(v & 8) {
-            if(details.colorType < ring::net::XtermColor) {
-                details.colorType = ring::net::XtermColor;
-            }
+            details.colorType = std::max(details.colorType, ring::net::XtermColor);
         }
 
         // MOUSE TRACKING - who even uses this?
@@ -431,7 +421,7 @@ namespace ring::telnet {
 
         // TRUECOLOR - support for this is probably rare...
         if(v & 256) {
-            details.colorType = ring::net::TrueColor;
+            details.colorType = std::max(details.colorType, ring::net::TrueColor);
         }
 
         // MNES - Mud New Environment Standard support.
@@ -472,15 +462,18 @@ namespace ring::telnet {
     }
 
 
-    TelnetProtocol::TelnetProtocol(net::connection_details &det) : conn(det), start_timer(*net::executor, boost::asio::chrono::milliseconds(300)) {
+    MudTelnetConnection::MudTelnetConnection(std::string &conn_id, boost::asio::io_context &con) : ring::net::MudConnection(conn_id, con),
+    start_timer(con, boost::asio::chrono::milliseconds(300)) {
         using namespace codes;
 
         for(const auto &code : {MSSP, SGA, MSDP, GMCP, NAWS, MTTS}) {
-            handlers.emplace(code, TelnetOption(*this, code));
+            handlers.emplace(code, TelnetOption(this, code));
         }
     }
 
-    void TelnetProtocol::onConnect() {
+    MudTelnetConnection::MudTelnetConnection(std::string &conn_id, boost::asio::io_context &con, nlohmann::json &j) : MudTelnetConnection(conn_id, con) {}
+
+    void MudTelnetConnection::onConnect() {
         using namespace codes;
         for(auto &h : handlers) {
             if(h.second.startWill()) {
@@ -492,14 +485,21 @@ namespace ring::telnet {
                 sendNegotiate(DO, h.first);
             }
         }
-        start_timer.async_wait([&](auto ec){if(!ec) start();});
+        start_timer.async_wait([&](auto ec){if(!ec) ready();});
     }
 
-    void TelnetProtocol::start() {
-        conn.onReady();
+    void MudTelnetConnection::start() {
+        onConnect();
     }
 
-    void TelnetProtocol::handleMessage(const TelnetMessage &msg) {
+    void MudTelnetConnection::ready() {
+        auto m = new net::ConnectionMsg();
+        m->conn_id = conn_id;
+        m->event = net::CONNECTED;
+        net::manager.events.push(m);
+    }
+
+    void MudTelnetConnection::handleMessage(const TelnetMessage &msg) {
         switch(msg.msg_type) {
             case AppData:
                 handleAppData(msg);
@@ -516,13 +516,15 @@ namespace ring::telnet {
         }
     }
 
-    void TelnetProtocol::handleAppData(const TelnetMessage &msg) {
-
+    void MudTelnetConnection::handleAppData(const TelnetMessage &msg) {
+        nlohmann::json *j;
         for(const auto& c : msg.data) {
             switch(c) {
                 case '\n':
-                    conn.receiveText(app_data, net::Line);
+                    j = new nlohmann::json();
+                    (*j)["data"]["command"] = app_data;
                     app_data.clear();
+                    game_messages.push(j);
                     break;
                 case '\r':
                     // we just ignore these.
@@ -534,11 +536,13 @@ namespace ring::telnet {
         }
     }
 
-    void TelnetProtocol::handleCommand(const TelnetMessage &msg) {
+    void MudTelnetConnection::handleCommand(const TelnetMessage &msg) {
 
     }
 
-    void TelnetProtocol::handleNegotiate(const TelnetMessage &msg) {
+    void MudTelnetConnection::resume() {}
+
+    void MudTelnetConnection::handleNegotiate(const TelnetMessage &msg) {
         using namespace codes;
         if(!handlers.count(msg.codes[1])) {
             switch(msg.codes[0]) {
@@ -557,20 +561,23 @@ namespace ring::telnet {
         hand.receiveNegotiate(msg.codes[0]);
     }
 
-    void TelnetProtocol::handleSubnegotiate(const TelnetMessage &msg) {
+    void MudTelnetConnection::handleSubnegotiate(const TelnetMessage &msg) {
         if(handlers.count(msg.codes[0])) {
             auto &hand = handlers.at(msg.codes[0]);
             hand.subNegotiate(msg);
         }
     }
 
-    void TelnetProtocol::sendNegotiate(uint8_t command, const uint8_t option) {
+    void MudTelnetConnection::sendNegotiate(uint8_t command, const uint8_t option) {
         std::vector<uint8_t> data = {codes::IAC, command, option};
         sendBytes(data);
     }
 
-    void TelnetProtocol::sendText(const std::string &txt) {
+    void MudTelnetConnection::sendText(const std::string &txt, net::TextType mode) {
+        if(txt.empty()) return;
         std::vector<uint8_t> data;
+
+        // standardize outgoing linebreaks for telnet.
         for(const auto &c : txt) {
             switch(c) {
                 case '\r':
@@ -584,40 +591,28 @@ namespace ring::telnet {
                     break;
             }
         }
+
+        if(mode == net::Line && !boost::algorithm::ends_with(txt, "\n")) {
+            data.push_back('\r');
+            data.push_back('\n');
+        }
+
+        if(mode == net::Prompt) {
+            data.push_back(codes::IAC);
+            if(details.telopt_eor) data.push_back(codes::EOR); else data.push_back(codes::GA);
+        }
         sendBytes(data);
     }
 
-    void TelnetProtocol::sendLine(const std::string &txt) {
-        if(txt.empty()) {
-            sendText("\n");
-            return;
-        }
-
-        if(txt[txt.size()-1] == '\n') {
-            sendText(txt);
-            return;
-        }
-        sendText(txt + "\n");
-        return;
+    void MudTelnetConnection::sendLine(const std::string &txt) {
+        sendText(txt + "\n", net::Line);
     }
 
-    void TelnetProtocol::sendPrompt(const std::string &prompt) {
-        sendText(prompt);
+    void MudTelnetConnection::sendPrompt(const std::string &txt) {
+        sendText(txt, net::Prompt);
     }
 
-    void TelnetProtocol::sendBytes(const std::vector<uint8_t> &data) {
-
-        if(conn.details.clientType == ring::net::TcpTelnet || conn.details.clientType == ring::net::TlsTelnet) {
-            conn.buffers->write(data);
-
-            if(conn.details.clientType == ring::net::TcpTelnet) {
-                conn.plainSocket->send();
-            }
-
-        }
-    }
-
-    void TelnetProtocol::sendSub(const uint8_t op, const std::vector<uint8_t> &data) {
+    void MudTelnetConnection::sendSub(const uint8_t op, const std::vector<uint8_t> &data) {
         using namespace codes;
         std::vector<uint8_t> out({IAC, SB, op});
         std::copy(data.begin(), data.end(), std::back_inserter(out));
@@ -626,26 +621,144 @@ namespace ring::telnet {
         sendBytes(out);
     }
 
-    nlohmann::json TelnetProtocol::serialize() {
+    nlohmann::json MudTelnetConnection::serialize() {
         nlohmann::json j;
-
         j["app_data"] = app_data;
         j["handlers"] = serializeHandlers();
         return j;
     }
 
-    nlohmann::json TelnetProtocol::serializeHandlers() {
-        auto j = nlohmann::json::array();
-
+    nlohmann::json MudTelnetConnection::serializeHandlers() {
+        nlohmann::json j;
         for(const auto& h : handlers) {
-            nlohmann::json j2 = {
-                    {"code", h.first},
-                    {"data", h.second.serialize()}
-            };
-            j.push_back(j2);
+            j.push_back(std::tuple(h.first, h.second.serialize()));
         }
-
         return j;
     }
 
+    void MudTelnetConnection::loadJson(nlohmann::json &j) {
+        MudConnection::loadJson(j);
+        if(j.contains("app_data")) app_data = j["app_data"];
+        if(j.contains("handlers")) for(auto &j2 : j["handlers"]) {
+            uint8_t id = j2[0];
+            auto handler = handlers.find(id);
+            if(handler != handlers.end()) {
+                handler->second.load(j2[1]);
+            }
+        }
+    }
+
+    void MudTelnetConnection::onDataReceived() {
+        while(auto msg = parse_message(in_buffer)) {
+            handleMessage(msg.value());
+        }
+    }
+
+    void MudTelnetConnection::sendJson(const nlohmann::json &j) {
+
+    }
+
+    void MudTelnetConnection::sendMSSP(const std::vector<std::tuple<std::string, std::string>> &data) {
+
+    }
+
+    void MudTelnetConnection::onClose() {}
+
+    TcpMudTelnetConnection::TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con) : MudTelnetConnection(conn_id, con), _socket(con) {}
+
+    TcpMudTelnetConnection::TcpMudTelnetConnection(std::string &conn_id, boost::asio::io_context &con, nlohmann::json &j,
+                                                   boost::asio::ip::tcp prot, int socket) : MudTelnetConnection(conn_id, con, j), _socket(con, prot, socket) {
+    }
+
+    nlohmann::json TcpMudTelnetConnection::serialize() {
+        using base64 = cppcodec::base64_rfc4648;
+        auto j = MudTelnetConnection::serialize();
+        j["socket"] = _socket.native_handle();
+        j["protocol"] = _socket.local_endpoint().protocol() == boost::asio::ip::tcp::v4() ? 4 : 6;
+        if(in_buffer.size()) j["in_buffer"] = base64::encode((uint8_t*)in_buffer.data().data(), in_buffer.data().size());
+        if(out_buffer.size()) j["out_buffer"] = base64::encode((uint8_t*)out_buffer.data().data(), out_buffer.data().size());
+        if(ex_buffer.size()) j["ex_buffer"] = base64::encode((uint8_t*)ex_buffer.data().data(), ex_buffer.data().size());
+        return j;
+    }
+
+    void TcpMudTelnetConnection::start() {
+        conn_strand.post([this] { read(); });
+        MudTelnetConnection::start();
+        conn_strand.post([this] { write(); });
+    }
+
+    void TcpMudTelnetConnection::do_read(boost::system::error_code ec, std::size_t trans) {
+        if(ec) {
+            // deal with this later.
+        } else {
+            // all is well, we got some data.
+            in_buffer.commit(trans);
+            onDataReceived();
+            auto prep = in_buffer.prepare(1024);
+
+            _socket.async_read_some(boost::asio::buffer(prep), [this](auto ec, std::size_t trans) { do_read(ec, trans); });
+        }
+    }
+
+    void TcpMudTelnetConnection::read() {
+        auto prep = in_buffer.prepare(1024);
+        _socket.async_read_some(boost::asio::buffer(prep), [this](auto ec, std::size_t trans) { do_read(ec, trans); });
+    }
+
+
+    void TcpMudTelnetConnection::do_write(boost::system::error_code ec, std::size_t trans) {
+        if(ec) {
+            // deal with this later.
+            }
+        else {
+            out_buffer.consume(trans);
+            if(buf_mutex.try_lock()) {
+                if(ex_buffer.size()) {
+                    auto prep = out_buffer.prepare(ex_buffer.size());
+                    memcpy(prep.data(), ex_buffer.data().data(), ex_buffer.size());
+                    out_buffer.commit(ex_buffer.size());
+                    ex_buffer.consume(ex_buffer.size());
+                }
+                buf_mutex.unlock();
+            }
+
+            if(out_buffer.size())
+                _socket.async_write_some(out_buffer.data(), [this](auto ec, std::size_t trans) { do_write(ec, trans); });
+            else {
+                out_mutex.unlock();
+                isWriting = false;
+            }
+        }
+    }
+
+    void TcpMudTelnetConnection::real_write() {
+        out_mutex.lock();
+        _socket.async_write_some(out_buffer.data(), [this](auto ec, std::size_t trans) { do_write(ec, trans); });
+    }
+
+    void TcpMudTelnetConnection::sendBytes(const std::vector<uint8_t> &data) {
+        if(data.empty()) return;
+        if(out_mutex.try_lock()) {
+            auto prep = out_buffer.prepare(data.size());
+            memcpy(prep.data(), data.data(), data.size());
+            out_buffer.commit(data.size());
+            out_mutex.unlock();
+            write();
+        } else {
+            buf_mutex.lock();
+            auto prep = ex_buffer.prepare(data.size());
+            memcpy(prep.data(), data.data(), data.size());
+            ex_buffer.commit(data.size());
+            buf_mutex.unlock();
+        }
+    }
+
+    void TcpMudTelnetConnection::write() {
+        if(!isWriting) {
+            if(out_buffer.size()) {
+                isWriting = true;
+                conn_strand.post([this]{ real_write(); });
+            }
+        }
+    }
 }
