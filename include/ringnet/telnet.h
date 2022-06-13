@@ -112,11 +112,12 @@ class MudTelnetConnection : public ring::net::MudConnection {
         void onDataReceived();
         void onConnect();
         void ready();
-        std::mutex out_mutex, buf_mutex;
+        boost::lockfree::spsc_queue<std::vector<uint8_t>> out_queue;
+        std::mutex out_mutex;
         std::string app_data;
         std::unordered_map<uint8_t, TelnetOption> handlers;
         boost::asio::high_resolution_timer start_timer;
-        boost::asio::streambuf in_buffer, out_buffer, ex_buffer;
+        boost::asio::streambuf in_buffer, out_buffer;
         nlohmann::json serializeHandlers();
     };
 
@@ -137,6 +138,7 @@ class MudTelnetConnection : public ring::net::MudConnection {
         void do_read(boost::system::error_code ec, std::size_t trans);
         void do_write(boost::system::error_code ec, std::size_t trans);
         void real_write();
+        void flush_out_queue();
     };
 
 }

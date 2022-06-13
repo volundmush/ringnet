@@ -463,7 +463,7 @@ namespace ring::telnet {
 
 
     MudTelnetConnection::MudTelnetConnection(std::string &conn_id, boost::asio::io_context &con) : ring::net::MudConnection(conn_id, con),
-    start_timer(con, boost::asio::chrono::milliseconds(1000)) {
+    start_timer(con, boost::asio::chrono::milliseconds(1000)), out_queue(100) {
         using namespace codes;
 
         for(const auto &code : {MSSP, SGA, MSDP, GMCP, NAWS, MTTS}) {
@@ -683,24 +683,16 @@ namespace ring::telnet {
             memcpy(prep.data(), out_d.data(), out_d.size());
             out_buffer.commit(out_d.size());
         }
-
-        if(j.contains("ex_buffer")) {
-            std::string data_buf = j["ex_buffer"];
-            std::vector<uint8_t> out_d = base64::decode(data_buf);
-            auto prep = ex_buffer.prepare(out_d.size());
-            memcpy(prep.data(), out_d.data(), out_d.size());
-            ex_buffer.commit(out_d.size());
-        }
     }
 
     nlohmann::json TcpMudTelnetConnection::serialize() {
         using base64 = cppcodec::base64_rfc4648;
+        flush_out_queue();
         auto j = MudTelnetConnection::serialize();
         j["socket"] = _socket.native_handle();
         j["protocol"] = _socket.local_endpoint().protocol() == boost::asio::ip::tcp::v4() ? 4 : 6;
         if(in_buffer.size()) j["in_buffer"] = base64::encode((uint8_t*)in_buffer.data().data(), in_buffer.data().size());
         if(out_buffer.size()) j["out_buffer"] = base64::encode((uint8_t*)out_buffer.data().data(), out_buffer.data().size());
-        if(ex_buffer.size()) j["ex_buffer"] = base64::encode((uint8_t*)ex_buffer.data().data(), ex_buffer.data().size());
         return j;
     }
 
@@ -746,50 +738,44 @@ namespace ring::telnet {
             }
         else {
 
-            if(buf_mutex.try_lock()) {
-                if(ex_buffer.size()) {
-                    auto prep = out_buffer.prepare(ex_buffer.size());
-                    memcpy(prep.data(), ex_buffer.data().data(), ex_buffer.size());
-                    out_buffer.commit(ex_buffer.size());
-                    ex_buffer.consume(ex_buffer.size());
-                }
-                buf_mutex.unlock();
-            }
-
             if(out_buffer.size())
                 _socket.async_write_some(out_buffer.data(), [this](auto ec, std::size_t trans) { do_write(ec, trans); });
             else {
                 out_mutex.unlock();
-                isWriting = false;
+                if(out_queue.empty()) {
+                    isWriting = false;
+                } else {
+                    flush_out_queue();
+                    _socket.async_write_some(out_buffer.data(), [this](auto ec, std::size_t trans) { do_write(ec, trans); });
+                }
+
             }
+        }
+    }
+
+    void TcpMudTelnetConnection::flush_out_queue() {
+        std::vector<uint8_t> out_data;
+        while(out_queue.pop(out_data)) {
+            auto prep = out_buffer.prepare(out_data.size());
+            memcpy(prep.data(), out_data.data(), out_data.size());
+            out_buffer.commit(out_data.size());
         }
     }
 
     void TcpMudTelnetConnection::real_write() {
         out_mutex.lock();
+        flush_out_queue();
         _socket.async_write_some(out_buffer.data(), [this](auto ec, std::size_t trans) { do_write(ec, trans); });
     }
 
     void TcpMudTelnetConnection::sendBytes(const std::vector<uint8_t> &data) {
-        if(data.empty()) return;
-        if(out_mutex.try_lock()) {
-            auto prep = out_buffer.prepare(data.size());
-            memcpy(prep.data(), data.data(), data.size());
-            out_buffer.commit(data.size());
-            out_mutex.unlock();
-            write();
-        } else {
-            buf_mutex.lock();
-            auto prep = ex_buffer.prepare(data.size());
-            memcpy(prep.data(), data.data(), data.size());
-            ex_buffer.commit(data.size());
-            buf_mutex.unlock();
-        }
+        out_queue.push(data);
+        write();
     }
 
     void TcpMudTelnetConnection::write() {
         if(!isWriting) {
-            if(out_buffer.size()) {
+            if(!out_queue.empty()) {
                 isWriting = true;
                 conn_strand.post([this]{ real_write(); });
             }

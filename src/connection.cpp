@@ -34,7 +34,6 @@ namespace ring::net {
         conn_id = j["conn_id"];
     }
 
-
     void client_details::load(nlohmann::json &j) {
         clientType = j["clientType"];
         colorType = j["colorType"];
