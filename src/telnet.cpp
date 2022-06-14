@@ -734,7 +734,8 @@ namespace ring::telnet {
         if(trans) out_buffer.consume(trans);
 
         if(ec) {
-            // deal with this later.
+            _socket.cancel();
+            return;
             }
         else {
 
